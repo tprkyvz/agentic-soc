@@ -1,3 +1,4 @@
-# Minimal placeholder for now.
-# Actual dependencies (FastAPI, LLM SDKs, etc.) will be added later.
-
+"""
+This file will be populated as the project evolves.
+Keep dependencies minimal and pinned once versions are decided.
+"""

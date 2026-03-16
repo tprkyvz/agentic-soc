@@ -1,3 +1,16 @@
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+*.log
+*.sqlite3
+*.db
+.env
+.env.*
+*.ipynb_checkpoints
+models/
+checkpoints/
 # Python
 __pycache__/
 *.py[cod]

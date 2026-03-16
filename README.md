@@ -1,60 +1,94 @@
-# Agentic SOC: Multi-Agent LLM Driven Security Operations Center
+## Agentic SOC – Multi-Agent LLM-Driven Security Operations Center
 
-This repository contains the **initial skeleton** for the project:
+This repository contains the **clean, long-lived skeleton** of your graduation project:
 
-> Agentic SOC: Multi-Agent LLM Driven Security Operations Center
+> Agentic SOC: a multi-agent system that sends complex logs to an LLM and answers:
+> *Is this an attack? Which vulnerability does it target? How can I mitigate it?*
 
-The long-term goal of this project is to explore how multi-agent systems
-powered by Large Language Models (LLMs) can support Security Operations Center (SOC)
-workflows, especially around log analysis and incident triage.
+The codebase is organized so that you can incrementally add components over ~1 year
+without the structure becoming chaotic. At this point, **no real logic is implemented**;
+only folders, placeholder files, and documentation stubs exist.
 
-At this stage, the repository only includes a minimal, clean structure and
-a very simple Python entry point. No real log parsing, LLM calls, or
-security logic is implemented yet.
+### High-Level Goals
 
-## Current Project Structure
+- Build a **multi-agent** system (Triage Agent, Analyst Agent, Knowledge-Base Agent, etc.).
+- Ingest and normalize **heterogeneous security logs** (web server, system, IDS, application).
+- Use LLMs plus a **knowledge base of past attacks** to:
+  - Decide whether an event is likely an attack.
+  - Map it to **attack techniques / vulnerabilities**.
+  - Suggest **mitigation / containment** steps.
+- Provide a **reproducible lab** where you can generate attacks, collect logs, and evaluate the system.
+
+---
+
+## Project Structure Overview
 
 ```text
 agentic-soc/
-  README.md         # Project overview (this file)
-  .gitignore        # Ignore venv, cache, models, etc.
-  requirements.txt  # Python dependencies (currently minimal)
+  .gitignore
+  README.md
+  requirements.txt
 
-  src/
-    agentic_soc/    # Python package root for the project
-      __init__.py
-      main.py       # Simple entry point (placeholder)
-      agents/       # Future agent definitions (triage, analyst, KB, etc.)
-        __init__.py
-      engine/       # Future orchestration and log processing engine
-        __init__.py
-      knowledge_base/  # Future RAG / vector DB integration
-        __init__.py
-      utils/        # Future utility helpers (config, parsing, etc.)
-        __init__.py
+  src/                  # Main application code
+    agents/            # Agent definitions (triage, analyst, KB, etc.)
+    engine/            # Orchestration, pipelines, and message routing
+    knowledge_base/    # RAG, vector DB, and attack history
+    utils/             # Shared helpers (config, logging, parsing)
+
+  lab/                  # Experimental lab (attack generation)
+    victims/           # Vulnerable services / apps in Docker
+    logs/              # Sample / recorded logs for experiments
+
+  notebooks/            # Jupyter experiments and quick prototypes
+
+  research/             # Papers, notes, and literature review
+
+  docs/                 # Documentation and thesis materials
+    reports/           # Monthly progress reports
+    architecture/      # Architecture diagrams and design documents
 ```
 
-## How to Run (draft)
+Each major directory also has its own `README` to explain its role in the project.
 
-From the project root:
+---
 
-```bash
-python -m src.agentic_soc.main
-```
+## Running the Project (Placeholder)
 
-Right now this will only execute a minimal placeholder `main()` function.
+At this stage, there is intentionally **no runnable application**. As you progress, you will:
 
-## Roadmap (high-level, subject to change)
+- Define a minimal CLI or API entry point in `src/engine/` (e.g. FastAPI or a CLI script).
+- Add installers and environment setup instructions here.
 
-This project is intended as a long-term graduation project and will likely
-evolve roughly along these lines:
+Until then, you can treat this repository as a **design and documentation container**.
 
-- **Phase 1** – Research, requirements, and simple prototypes
-- **Phase 2** – Basic log ingestion and single-agent LLM analysis
-- **Phase 3** – Multi-agent orchestration (triage, analyst, KB, recommendations)
-- **Phase 4** – Knowledge base (past attacks, patterns, RAG)
-- **Phase 5** – Evaluation, simple UI, and final report
+---
 
-For now, the focus is on keeping the structure clean and ready
-for iterative development.
+## Long-Term Milestones (Very High Level)
 
+- **Milestone 1 – Concept & Research**
+  - Clarify requirements: threat model, log sources, target users.
+  - Select LLM provider(s) and vector DB technology.
+  - Study SOC workflows and attack categorizations (e.g., MITRE ATT&CK).
+
+- **Milestone 2 – Lab & Data**
+  - Spin up vulnerable services in `lab/victims`.
+  - Generate attacks and collect logs into `lab/logs`.
+  - Define log formats and normalization strategy in `src/utils`.
+
+- **Milestone 3 – Core Engine & Single-Agent Prototype**
+  - Implement a simple log ingestion pipeline in `src/engine`.
+  - Add a single “monolithic” LLM agent in `src/agents` that explains logs.
+
+- **Milestone 4 – Multi-Agent Architecture**
+  - Split roles into Triage / Analyst / KB Agent.
+  - Implement message passing and orchestration in the engine.
+
+- **Milestone 5 – Knowledge Base & RAG**
+  - Populate `knowledge_base` with past attacks and patterns.
+  - Integrate retrieval-augmented generation over this data.
+
+- **Milestone 6 – Evaluation & Thesis**
+  - Design quantitative and qualitative evaluation scenarios.
+  - Document findings in `docs/reports` and `docs/architecture`.
+
+This file should remain a **living document** that you refine as the project evolves.
