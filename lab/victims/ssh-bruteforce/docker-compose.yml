@@ -1,0 +1,11 @@
+services:
+  victim-ssh:
+    image: rastasheep/ubuntu-sshd:18.04
+    container_name: victim_ssh_server
+    ports:
+      - "2222:22"
+    environment:
+      - ROOT_PASSWORD=root #generating weak password
+    # Bu satırı ekle: -D (daemon olma), -e (logları stderr'e bas)
+    command: /usr/sbin/sshd -D -e
+    restart: unless-stopped

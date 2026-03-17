@@ -1,4 +1,6 @@
-"""
-This file will be populated as the project evolves.
-Keep dependencies minimal and pinned once versions are decided.
-"""
+certifi==2026.2.25
+charset-normalizer==3.4.6
+docker==7.1.0
+idna==3.11
+requests==2.32.5
+urllib3==2.6.3
