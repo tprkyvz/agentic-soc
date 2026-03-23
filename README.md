@@ -4,8 +4,8 @@ This repository contains the **clean, long-lived skeleton** of your graduation p
 
 > Agentic SOC: a multi-agent system that sends complex logs to an LLM and answers:
 > *Is this an attack? Which vulnerability does it target? How can I mitigate it?*
- At this point, **no real logic is implemented**;
- 
+
+ At this point, **no real logic is implemented**; 
 only folders, placeholder files, and documentation stubs exist.
 
 ### High-Level Goals
