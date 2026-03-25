@@ -1,6 +1,5 @@
 ## Agentic SOC – Multi-Agent LLM-Driven Security Operations Center
 
-This repository contains the **clean, long-lived skeleton** of your graduation project:
 
 > Agentic SOC: a multi-agent system that sends complex logs to an LLM and answers:
 > *Is this an attack? Which vulnerability does it target? How can I mitigate it?*
