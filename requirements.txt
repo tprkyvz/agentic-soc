@@ -1,6 +1,23 @@
+# HTTP / networking
 certifi==2026.2.25
 charset-normalizer==3.4.6
 docker==7.1.0
 idna==3.11
 requests==2.32.5
 urllib3==2.6.3
+
+# LangGraph & LangChain
+langgraph>=0.2.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+langchain-community>=0.3.0
+
+# Veri modelleri
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Konfigürasyon
+python-dotenv>=1.0.0
+
+# Terminal çıktısı
+rich>=13.0.0
