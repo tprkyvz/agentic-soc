@@ -1,8 +1,10 @@
 """
-engine/graph.py – LangGraph ajan grafı tanımı.
+engine/graph.py – LangGraph ajan grafı tanımı (KB destekli).
 
 Akış:
-  START → triage → [benign: END] | [suspicious/malicious: analyst → mitigation → END]
+  START → triage → kb_query → analyst → mitigation → kb_save → END
+                       ↑
+                  (benign ise discard)
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -11,82 +13,67 @@ from .models import AgentState
 from ..agents.triage_agent import triage_node, triage_router
 from ..agents.analyst_agent import analyst_node
 from ..agents.mitigation_agent import mitigation_node
+from ..agents.kb_agent import kb_query_node, kb_save_node
 
 
 def _discard_node(state: AgentState) -> AgentState:
-    """Benign olaylar için terminal düğüm. Sadece işaret koyar."""
+    """Benign olaylar için terminal düğüm."""
     state.processing_completed = True
     return state
 
 
-def build_graph() -> StateGraph:
+def _wrap(fn):
+    """AgentState ↔ dict dönüşümü için wrapper fabrikası."""
+    def wrapper(state: dict) -> dict:
+        agent_state = AgentState(**state)
+        result = fn(agent_state)
+        return result.model_dump()
+    return wrapper
+
+
+def build_graph():
     """
     Agentic SOC LangGraph grafını oluştur ve derle.
 
     Düğümler:
-        triage    – Kural tabanlı ilk filtre
-        analyst   – LLM ile derin analiz
+        triage     – Kural tabanlı ilk filtre
+        kb_query   – Benzer geçmiş vakaları KB'den çek (RAG)
+        analyst    – LLM ile derin analiz (KB bağlamıyla)
         mitigation – LLM ile önlem önerileri
-        discard   – Benign olaylar için erken çıkış
+        kb_save    – Tamamlanan vakayı KB'ye kaydet (öğrenme)
+        discard    – Benign olaylar için erken çıkış
 
-    Kenarlar:
-        START → triage
-        triage → (koşullu) analyst | discard
-        analyst → mitigation
-        mitigation → END
-        discard → END
+    Akış:
+        START → triage → (benign) discard → END
+                       → (suspicious/malicious) kb_query → analyst → mitigation → kb_save → END
     """
-    # Dict tabanlı state için graph'ı dict ile tanımla
-    # AgentState Pydantic modeli olduğu için dict wrapper kullanıyoruz
     graph = StateGraph(dict)
 
-    # Pydantic nesnelerini dict'e saran wrapper'lar
-    def triage_wrapper(state: dict) -> dict:
-        agent_state = AgentState(**state)
-        result = triage_node(agent_state)
-        return result.model_dump()
+    graph.add_node("triage", _wrap(triage_node))
+    graph.add_node("kb_query", _wrap(kb_query_node))
+    graph.add_node("analyst", _wrap(analyst_node))
+    graph.add_node("mitigation", _wrap(mitigation_node))
+    graph.add_node("kb_save", _wrap(kb_save_node))
+    graph.add_node("discard", _wrap(_discard_node))
 
-    def analyst_wrapper(state: dict) -> dict:
-        agent_state = AgentState(**state)
-        result = analyst_node(agent_state)
-        return result.model_dump()
-
-    def mitigation_wrapper(state: dict) -> dict:
-        agent_state = AgentState(**state)
-        result = mitigation_node(agent_state)
-        return result.model_dump()
-
-    def discard_wrapper(state: dict) -> dict:
-        agent_state = AgentState(**state)
-        result = _discard_node(agent_state)
-        return result.model_dump()
-
-    def router_wrapper(state: dict) -> str:
-        agent_state = AgentState(**state)
-        return triage_router(agent_state)
-
-    # Düğümleri ekle
-    graph.add_node("triage", triage_wrapper)
-    graph.add_node("analyst", analyst_wrapper)
-    graph.add_node("mitigation", mitigation_wrapper)
-    graph.add_node("discard", discard_wrapper)
-
-    # Kenarları ekle
     graph.add_edge(START, "triage")
+
     graph.add_conditional_edges(
         "triage",
-        router_wrapper,
+        lambda state: triage_router(AgentState(**state)),
         {
-            "analyze": "analyst",
+            "analyze": "kb_query",
             "discard": "discard",
         },
     )
+
+    graph.add_edge("kb_query", "analyst")
     graph.add_edge("analyst", "mitigation")
-    graph.add_edge("mitigation", END)
+    graph.add_edge("mitigation", "kb_save")
+    graph.add_edge("kb_save", END)
     graph.add_edge("discard", END)
 
     return graph.compile()
 
 
-# Singleton – modül import edildiğinde hazır
 soc_graph = build_graph()

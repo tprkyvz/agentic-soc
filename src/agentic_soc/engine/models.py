@@ -105,6 +105,10 @@ class AgentState(BaseModel):
     # Girdi
     event: SecurityEvent
 
+    # Knowledge Base çıktısı (Triage sonrası, Analyst öncesi)
+    kb_results: list[Any] = Field(default_factory=list, description="Benzer geçmiş vakalar (AttackCase nesneleri)")
+    kb_context: str = Field(default="", description="LLM prompt'una eklenecek KB bağlamı")
+
     # Triage çıktısı
     triage_result: TriageResult | None = None
 

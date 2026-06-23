@@ -34,9 +34,18 @@ def _build_user_message(state: AgentState) -> str:
 
     usernames_str = ", ".join(event.attempted_usernames[:10]) if event.attempted_usernames else "unknown"
 
-    return f"""
-Analyze the following SSH security event:
+    # KB bağlamı varsa ekle
+    kb_section = ""
+    if state.kb_context:
+        kb_section = f"""
 
+{state.kb_context}
+
+Use the above past incidents as additional context for your analysis.
+"""
+
+    return f"""
+Analyze the following SSH security event:{kb_section}
 **Event Summary:**
 - Source IP: {event.source_ip or "unknown"}
 - Target Service: {event.target_service}

@@ -15,6 +15,8 @@ from rich.panel import Panel
 
 from .utils.config import settings
 from .utils.llm_client import check_ollama_connection
+from .knowledge_base.embeddings import check_embedding_model
+from .knowledge_base.storage import count_cases
 from .engine.pipeline import run_file_mode, run_docker_mode
 
 console = Console()
@@ -44,6 +46,23 @@ def _check_prerequisites(source: str) -> bool:
         console.print(f"[red]✗[/red] {msg}")
         console.print("[yellow]Ollama çalışmıyor. 'ollama serve' komutunu çalıştır.[/yellow]")
         ok = False
+
+    # Embedding modeli kontrolü
+    console.print("[dim]Embedding modeli kontrol ediliyor...[/dim]", end=" ")
+    emb_ok, emb_msg = check_embedding_model()
+    if emb_ok:
+        console.print(f"[green]✓[/green] {emb_msg}")
+    else:
+        console.print(f"[yellow]⚠[/yellow] {emb_msg}")
+        console.print("[dim]KB özelliği devre dışı (embedding modeli yok). Diğer özellikler çalışır.[/dim]")
+
+    # KB durum bilgisi
+    kb_count = count_cases()
+    if kb_count > 0:
+        console.print(f"[green]✓[/green] Knowledge Base: {kb_count} vaka yüklendi")
+    else:
+        console.print(f"[yellow]⚠[/yellow] Knowledge Base boş. ")
+        console.print("[dim]  Doldurmak için: python -m src.agentic_soc.main --seed[/dim]")
 
     # Docker kontrolü (sadece docker modunda)
     if source == "docker":
@@ -103,6 +122,16 @@ def main() -> None:
         action="store_true",
         help="Ön kontrolleri atla",
     )
+    parser.add_argument(
+        "--seed",
+        action="store_true",
+        help="Knowledge Base'i başlangıç vakalarıyla doldur ve çık",
+    )
+    parser.add_argument(
+        "--seed-force",
+        action="store_true",
+        help="KB'yi zorla yeniden doldur (mevcut verilerin üzerine yaz)",
+    )
 
     args = parser.parse_args()
 
@@ -111,6 +140,12 @@ def main() -> None:
         settings.ollama_model = args.model
 
     _print_banner()
+
+    # --seed modu: KB'yi doldur ve çık
+    if args.seed or args.seed_force:
+        from .knowledge_base.seeder import seed_knowledge_base
+        seed_knowledge_base(force=args.seed_force)
+        sys.exit(0)
 
     # Ön kontrol
     if not args.no_check:
