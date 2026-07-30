@@ -190,6 +190,75 @@ SEED_CASES: list[AttackCase] = [
         ],
         resolution_time_hours=0.25,
     ),
+
+    # ── Web Uygulama Saldırıları ─────────────────────────────────────────────
+
+    AttackCase(
+        id="sqli-001",
+        title="SQL Injection via Search/ID Parameter (UNION-based)",
+        attack_type=AttackType.SQL_INJECTION,
+        mitre_technique_id="T1190",
+        mitre_technique_name="Exploit Public-Facing Application",
+        severity=Severity.CRITICAL,
+        description=(
+            "Saldırgan, web uygulamasının arama/ID parametresine UNION SELECT tabanlı "
+            "SQL enjeksiyonu payload'ları göndererek veritabanından hassas veri "
+            "(kullanıcı adı, şifre) sızdırmaya çalıştı. Kısa süre içinde birden fazla "
+            "farklı SQLi tekniği (UNION SELECT, boolean tautoloji, yorum satırı "
+            "sonlandırma) tek bir IP'den denendi."
+        ),
+        log_sample=(
+            "203.0.113.77 - - [30/Jul/2026:16:45:11 +0000] \"GET /product?id=1'/**/OR/**/'1'='1 HTTP/1.1\" 404 162 \"-\" \"curl/8.14.1\"\n"
+            "203.0.113.77 - - [30/Jul/2026:16:45:12 +0000] \"GET /product?id=1/**/UNION/**/SELECT/**/username,password/**/FROM/**/users-- HTTP/1.1\" 404 162 \"-\" \"curl/8.14.1\""
+        ),
+        indicators=[
+            "union_select_pattern",
+            "boolean_tautology",
+            "information_schema_probe",
+            "single_source_ip",
+            "repeated_4xx_on_dynamic_paths",
+        ],
+        mitigations=[
+            "Deploy a WAF with SQLi rule sets (e.g. ModSecurity CRS)",
+            "Use parameterized queries/prepared statements exclusively",
+            "Apply least-privilege DB accounts (no information_schema access for app user)",
+            "Rate-limit/block source IP after repeated 4xx on dynamic endpoints",
+        ],
+        resolution_time_hours=1.5,
+    ),
+
+    AttackCase(
+        id="xss-001",
+        title="Reflected Cross-Site Scripting (XSS) via Query Parameter",
+        attack_type=AttackType.XSS,
+        mitre_technique_id="T1190",
+        mitre_technique_name="Exploit Public-Facing Application",
+        severity=Severity.HIGH,
+        description=(
+            "Saldırgan, web uygulamasının yorum/arama parametresine <script> etiketleri "
+            "ve olay işleyicileri (onerror, javascript:) içeren yansıtılmış XSS "
+            "payload'ları enjekte etmeye çalıştı. Amaç, diğer kullanıcıların "
+            "tarayıcısında JavaScript çalıştırarak oturum çerezlerini (document.cookie) "
+            "çalmak."
+        ),
+        log_sample=(
+            "203.0.113.77 - - [30/Jul/2026:16:45:20 +0000] \"GET /comment?name=<script>alert(document.cookie)</script> HTTP/1.1\" 404 162 \"-\" \"curl/8.14.1\""
+        ),
+        indicators=[
+            "script_tag_injection",
+            "event_handler_injection",
+            "javascript_uri_scheme",
+            "cookie_theft_attempt",
+            "single_source_ip",
+        ],
+        mitigations=[
+            "Implement Content-Security-Policy (CSP) headers restricting inline scripts",
+            "Contextually HTML-encode all user-supplied output before rendering",
+            "Set HttpOnly and Secure flags on session cookies",
+            "Deploy WAF rules for XSS signatures",
+        ],
+        resolution_time_hours=1.0,
+    ),
 ]
 
 

@@ -208,7 +208,7 @@
 
   <div class="hero">
     <p class="eyebrow">Agentic SOC · Local Dashboard</p>
-    <h1>SSH güvenlik olaylarını analiz et, bilgi tabanını izle.</h1>
+    <h1>SSH ve web güvenlik olaylarını analiz et, bilgi tabanını izle.</h1>
     <p>Bir log dosyası seç veya log satırı yapıştır; triage → KB araması → MITRE analizi → mitigation önerisi zincirini canlı çalıştır.</p>
   </div>
 
@@ -227,6 +227,11 @@
     </div>
 
     <div id="tab-paste" style="display:none;">
+      <label class="field-label" for="pasteLogType">Senaryo</label>
+      <select id="pasteLogType" style="margin-bottom:12px;">
+        <option value="ssh">SSH (brute-force)</option>
+        <option value="web">Web (SQLi/XSS)</option>
+      </select>
       <label class="field-label" for="logTextArea">Ham log satırları</label>
       <textarea id="logTextArea" placeholder="Failed password for root from 203.0.113.7 port 51234 ssh2&#10;..."></textarea>
     </div>
@@ -251,7 +256,7 @@
     <div class="panel">
       <div class="panel-head"><h2>Son Aktivite</h2><button class="btn ghost" id="refreshRecentBtn" type="button" style="padding:5px 11px;font-size:11.5px;">Yenile</button></div>
       <p class="panel-desc" style="margin-bottom:10px;">Bu oturuma özel — sunucu yeniden başlayınca sıfırlanır.</p>
-      <div class="table-scroll"><table id="recentTable"><thead><tr><th>IP</th><th>Başarısız</th><th>Seviye</th></tr></thead><tbody></tbody></table></div>
+      <div class="table-scroll"><table id="recentTable"><thead><tr><th>IP</th><th>Servis</th><th>Başarısız</th><th>Seviye</th></tr></thead><tbody></tbody></table></div>
       <div id="recentEmpty" class="empty-state" style="display:none;">Kayıt yok.</div>
     </div>
   </div>
@@ -389,6 +394,7 @@ async function loadRecent() {
     empty.style.display = 'none';
     tbody.innerHTML = events.map(ev => `<tr>
       <td class="mono">${esc(ev.source_ip || 'bilinmiyor')}</td>
+      <td>${esc(ev.target_service || '—')}</td>
       <td class="num mono">${ev.failed_attempts}</td>
       <td><span class="verdict ${threatVerdictClass[ev.threat_level] || ''}">${esc(ev.threat_level || '—')}</span></td>
     </tr>`).join('');
@@ -398,7 +404,7 @@ async function loadRecent() {
 function renderResults(events) {
   const box = document.getElementById('results');
   if (!events.length) {
-    box.innerHTML = '<div class="empty-state">Bu log için SSH ile ilgili olay bulunamadı.</div>';
+    box.innerHTML = '<div class="empty-state">Bu log için ilgili bir olay bulunamadı.</div>';
     return;
   }
   box.innerHTML = events.map(ev => {
@@ -432,10 +438,11 @@ function renderResults(events) {
         <span class="verdict ${threatVerdictClass[verdict] || ''}">${esc(verdict)}</span>
       </div>
       <div class="kv-grid">
+        <div><div class="k">Servis</div><div class="v">${esc(ev.target_service || '—')}</div></div>
         <div><div class="k">Güven</div><div class="v">%${Math.round((ev.confidence || 0) * 100)}</div></div>
-        <div><div class="k">Başarısız</div><div class="v">${ev.failed_attempts}</div></div>
+        <div><div class="k">Başarısız/Engellenen</div><div class="v">${ev.failed_attempts}</div></div>
         <div><div class="k">Başarılı</div><div class="v">${ev.successful_attempts}</div></div>
-        <div><div class="k">Kullanıcılar</div><div class="v">${esc(ev.attempted_usernames.slice(0,5).join(', ') || '—')}</div></div>
+        <div><div class="k">Göstergeler</div><div class="v">${esc((ev.indicators || []).slice(0,5).join(', ') || '—')}</div></div>
       </div>
       <p class="reason">${esc(ev.triage_reason)}</p>
       ${mitre}
@@ -461,11 +468,14 @@ async function runAnalysis() {
   if (activeTab === 'file') {
     const file = document.getElementById('logFileSelect').value;
     if (!file) { errorBox.innerHTML = '<div class="alert error"><b>Hata:</b> log dosyası seçilmedi.</div>'; return; }
-    payload = { log_file: file };
+    // Senaryo, dosya yoluna göre otomatik belirlenir (örn. .../web_sqli_xss/... -> web).
+    const logType = file.includes('web') ? 'web' : 'ssh';
+    payload = { log_file: file, log_type: logType };
   } else {
     const text = document.getElementById('logTextArea').value.trim();
     if (!text) { errorBox.innerHTML = '<div class="alert error"><b>Hata:</b> log metni boş.</div>'; return; }
-    payload = { log_text: text };
+    const logType = document.getElementById('pasteLogType').value;
+    payload = { log_text: text, log_type: logType };
   }
 
   errorBox.innerHTML = '';

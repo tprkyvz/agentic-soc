@@ -39,6 +39,7 @@ _MAX_RECENT = 50
 class AnalyzeRequest(BaseModel):
     log_file: str | None = None
     log_text: str | None = None
+    log_type: str = "ssh"
 
 
 def _summarize(result: dict) -> dict:
@@ -51,9 +52,10 @@ def _summarize(result: dict) -> dict:
     return {
         "event_id": state.event.event_id,
         "source_ip": state.event.source_ip,
+        "target_service": state.event.target_service,
         "failed_attempts": state.event.failed_attempts,
         "successful_attempts": state.event.successful_attempts,
-        "attempted_usernames": state.event.attempted_usernames,
+        "indicators": state.event.indicators,
         "threat_level": triage.threat_level.value if triage else None,
         "confidence": triage.confidence if triage else None,
         "triage_reason": triage.reason if triage else None,
@@ -135,9 +137,9 @@ def api_analyze(req: AnalyzeRequest) -> list[dict]:
     else:
         raise HTTPException(status_code=400, detail="log_file veya log_text belirtilmeli")
 
-    raw_results = analyze_log_text(text, source=source)
+    raw_results = analyze_log_text(text, source=source, log_type=req.log_type)
     if not raw_results:
-        raise HTTPException(status_code=422, detail="SSH ile ilgili log satırı bulunamadı")
+        raise HTTPException(status_code=422, detail="İlgili log satırı bulunamadı")
 
     summaries = [_summarize(r) for r in raw_results]
     _recent_events[:0] = summaries

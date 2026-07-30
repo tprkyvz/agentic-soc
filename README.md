@@ -3,7 +3,8 @@
 > Agentic SOC: a multi-agent system that sends complex logs to an LLM and answers:
 > *Is this an attack? Which vulnerability does it target? How can I mitigate it?*
 
-A working prototype is implemented end-to-end for the **SSH brute-force** scenario:
+A working prototype is implemented end-to-end for two scenarios — **SSH
+brute-force** and **web SQL injection / XSS**:
 log ingestion (file or live Docker stream) → rule-based triage → KB similarity
 lookup (RAG) → LLM-based MITRE ATT&CK analysis → LLM-based mitigation advice →
 learning the new case back into the knowledge base. See
@@ -37,8 +38,8 @@ agentic-soc/
     webapp/            # FastAPI local dashboard (run + inspect the KB in a browser)
 
   lab/                  # Experimental lab (attack generation)
-    victims/           # Vulnerable services / apps in Docker
-    logs/              # Sample / recorded logs for experiments
+    victims/           # Vulnerable services / apps in Docker (ssh-bruteforce, web-sqli-xss)
+    logs/              # Sample / recorded logs for experiments (ssh_bruteforce, web_sqli_xss)
 
   data/                 # Generated at runtime: ChromaDB vector store (gitignored)
 
@@ -65,24 +66,36 @@ Prerequisites:
 - Docker, only if you want to run the live lab scenario
 - Copy `.env.example` to `.env` and adjust if needed
 
-Seed the knowledge base once (loads a handful of MITRE-mapped SSH attack cases):
+Seed the knowledge base once (loads a handful of MITRE-mapped attack cases,
+SSH and web):
 
 ```bash
 python -m src.agentic_soc.main --seed
 ```
 
-Analyze a static log file (works without Docker, uses the bundled sample):
+Analyze a static log file (works without Docker, uses the bundled sample).
+`--log-type` selects the scenario (`ssh` is the default):
 
 ```bash
 python -m src.agentic_soc.main --source file --log-file lab/logs/ssh_bruteforce/sample_auth.log
+python -m src.agentic_soc.main --source file --log-type web --log-file lab/logs/web_sqli_xss/sample_access.log
 ```
 
-Analyze a live attack against the lab's vulnerable SSH container:
+Analyze a live attack against a lab victim container — SSH brute-force:
 
 ```bash
 docker compose -f lab/victims/ssh-bruteforce/docker-compose.yml up -d
 python -m src.agentic_soc.main --source docker   # in one terminal
 bash lab/victims/ssh-bruteforce/attack.sh          # in another terminal
+```
+
+...or web SQLi/XSS (a plain Nginx server — the point is realistic attack-log
+patterns, not a real exploitable backend):
+
+```bash
+docker compose -f lab/victims/web-sqli-xss/docker-compose.yml up -d
+python -m src.agentic_soc.main --source docker --log-type web   # in one terminal
+bash lab/victims/web-sqli-xss/attack.sh                            # in another terminal
 ```
 
 ### Local Dashboard
@@ -107,11 +120,12 @@ Then open <http://127.0.0.1:8000>.
   - Select LLM provider(s) and vector DB technology (Ollama local models + ChromaDB).
   - Study SOC workflows and attack categorizations (e.g., MITRE ATT&CK).
 
-- **Milestone 2 – Lab & Data** ✅ (SSH brute-force scenario only)
-  - Spin up a vulnerable SSH service in `lab/victims`.
-  - Generate attacks (`attack.sh`) and collect a sample log into `lab/logs`.
-  - Define log formats and normalization strategy in `src/agentic_soc/utils/parsers.py`.
-  - Still open: additional log sources (web server, IDS, application logs).
+- **Milestone 2 – Lab & Data** ✅ (SSH + web scenarios)
+  - Two lab victims (`lab/victims/ssh-bruteforce`, `lab/victims/web-sqli-xss`),
+    each with a docker-compose service, an `attack.sh`, and a sample log.
+  - Log formats and normalization for both in `src/agentic_soc/utils/parsers.py`
+    (`parse_ssh_line`, `parse_web_line`).
+  - Still open: IDS/application log sources beyond SSH and web.
 
 - **Milestone 3 – Core Engine & Single-Agent Prototype** ✅
   - Log ingestion pipeline in `src/agentic_soc/engine/pipeline.py` (file + live Docker modes).

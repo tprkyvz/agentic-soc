@@ -19,7 +19,12 @@ _MITRE_PREFIX_TO_ATTACK_TYPE: dict[str, AttackType] = {
     "T1110": AttackType.BRUTE_FORCE,             # Brute Force
     "T1078": AttackType.CREDENTIAL_STUFFING,      # Valid Accounts (seed verisiyle tutarlı)
     "T1046": AttackType.PORT_SCAN,                # Network Service Discovery
-    "T1190": AttackType.SQL_INJECTION,            # Exploit Public-Facing Application
+    # T1190 (Exploit Public-Facing Application) kasıtlı olarak burada YOK:
+    # hem SQLi hem XSS bu tekniğe eşleniyor, MITRE ATT&CK'te bu ikisi için ayrı
+    # alt-teknik yok. Bu yüzden T1190 durumunda aşağıdaki anahtar kelime
+    # eşlemesine düşülür. Not: bu, LLM'in açıklama metninde "sql injection"/
+    # "xss" gibi kelimeler kullanmasına bağlı olduğundan garantili değildir –
+    # bilinen bir sınırlama.
     "T1068": AttackType.PRIVILEGE_ESCALATION,     # Exploitation for Privilege Escalation
     "T1548": AttackType.PRIVILEGE_ESCALATION,     # Abuse Elevation Control Mechanism
     "T1021": AttackType.LATERAL_MOVEMENT,         # Remote Services
@@ -121,6 +126,15 @@ def kb_save_node(state: AgentState) -> AgentState:
                 + state.mitigation_result.short_term_actions[:2]
             )
 
+        # SSH'te göstergeler çıplak kullanıcı adı ("admin"); "username:" öneki
+        # burada eklenir. Web'de göstergeler zaten kendini açıklayan, hazır
+        # metinlerdir (örn. "sql_injection: union_select") – tekrar
+        # öneklemek "username:sql_injection: ..." gibi anlamsız bir sonuç verirdi.
+        if state.event.target_service == "web":
+            scenario_indicators = list(state.event.indicators[:3])
+        else:
+            scenario_indicators = [f"username:{u}" for u in state.event.indicators[:3]]
+
         new_case = AttackCase(
             id=f"learned-{state.event.event_id[:8]}",
             title=f"{analysis.mitre_technique_name} from {state.event.source_ip or 'unknown'}",
@@ -135,7 +149,7 @@ def kb_save_node(state: AgentState) -> AgentState:
             indicators=[
                 f"failed_attempts:{state.event.failed_attempts}",
                 f"source_ip:{state.event.source_ip}",
-                *[f"username:{u}" for u in state.event.attempted_usernames[:3]],
+                *scenario_indicators,
             ],
             mitigations=mitigations,
         )

@@ -31,8 +31,7 @@ Rules:
 """
 
 
-def _build_user_message(state: AgentState) -> str:
-    """Mitigation prompt'unu state verisiyle doldur."""
+def _build_ssh_user_message(state: AgentState) -> str:
     event = state.event
     analysis = state.analysis_result
     triage = state.triage_result
@@ -50,13 +49,49 @@ Provide mitigation recommendations for the following security incident:
 - Target Service: SSH (port 22)
 - Failed Attempts: {event.failed_attempts}
 - Successful Logins: {event.successful_attempts}
-- Attempted Usernames: {', '.join(event.attempted_usernames[:5]) if event.attempted_usernames else "unknown"}
+- Attempted Usernames: {', '.join(event.indicators[:5]) if event.indicators else "unknown"}
 
 **Analysis Summary:**
 {analysis.attack_description if analysis else "No analysis available."}
 
 Provide practical mitigation steps with real Linux commands where possible.
 """.strip()
+
+
+def _build_web_user_message(state: AgentState) -> str:
+    event = state.event
+    analysis = state.analysis_result
+    triage = state.triage_result
+
+    return f"""
+Provide mitigation recommendations for the following security incident:
+
+**Threat Level:** {triage.threat_level.value.upper() if triage else "UNKNOWN"}
+
+**MITRE ATT&CK:**
+- Technique: {analysis.mitre_technique_id if analysis else "Unknown"} – {analysis.mitre_technique_name if analysis else "Unknown"}
+
+**Attack Details:**
+- Source IP: {event.source_ip or "unknown"}
+- Target Service: Web application (HTTP)
+- Malicious Requests Blocked/Not-Found: {event.failed_attempts}
+- Malicious Requests That Returned HTTP 200: {event.successful_attempts}
+- Matched Attack Indicators: {', '.join(event.indicators[:5]) if event.indicators else "unknown"}
+
+**Analysis Summary:**
+{analysis.attack_description if analysis else "No analysis available."}
+
+Provide practical mitigation steps for a web application (WAF rules, input
+validation/parameterized queries, output encoding, security headers) with
+real example commands/config snippets where possible.
+""".strip()
+
+
+def _build_user_message(state: AgentState) -> str:
+    """Mitigation prompt'unu senaryoya göre doldur (SSH vs web)."""
+    if state.event.target_service == "web":
+        return _build_web_user_message(state)
+    return _build_ssh_user_message(state)
 
 
 def _parse_llm_response(response_text: str) -> dict:
@@ -99,6 +134,34 @@ def _ssh_bruteforce_fallback(source_ip: str | None) -> MitigationResult:
     )
 
 
+def _web_attack_fallback(source_ip: str | None) -> MitigationResult:
+    """SQLi/XSS için statik fallback önerileri."""
+    ip = source_ip or "<KAYNAK_IP>"
+    return MitigationResult(
+        immediate_actions=[
+            f"Saldırgan IP'yi derhal engelle/rate-limit uygula: {ip}",
+            "Etkilenen endpoint'i geçici olarak devre dışı bırak veya WAF kuralı ekle",
+            "Güvenlik ekibini olay hakkında bilgilendir",
+        ],
+        short_term_actions=[
+            "Tüm veritabanı sorgularını parametreli sorgulara/prepared statement'lara geçir",
+            "Kullanıcı girdisini bağlama göre HTML/SQL için encode et",
+            "ModSecurity gibi bir WAF kur ve OWASP CRS kurallarını etkinleştir",
+            "Session cookie'lere HttpOnly ve Secure bayraklarını ekle",
+        ],
+        long_term_actions=[
+            "Content-Security-Policy (CSP) header'ları ile inline script'leri kısıtla",
+            "Uygulama veritabanı hesabına en az yetki (least privilege) prensibini uygula",
+            "Düzenli güvenlik denetimleri ve penetrasyon testleri planla",
+        ],
+        example_commands=[
+            f"sudo ufw deny from {ip} to any",
+            "sudo apt-get install -y libapache2-mod-security2 && sudo a2enmod security2",
+            "curl -I http://localhost | grep -i content-security-policy",
+        ],
+    )
+
+
 def mitigation_node(state: AgentState) -> AgentState:
     """
     LangGraph düğümü: Mitigation.
@@ -118,7 +181,10 @@ def mitigation_node(state: AgentState) -> AgentState:
 
     except (json.JSONDecodeError, Exception) as e:
         state.errors.append(f"Mitigation: {e} – Fallback kullanıldı")
-        state.mitigation_result = _ssh_bruteforce_fallback(state.event.source_ip)
+        if state.event.target_service == "web":
+            state.mitigation_result = _web_attack_fallback(state.event.source_ip)
+        else:
+            state.mitigation_result = _ssh_bruteforce_fallback(state.event.source_ip)
 
     state.processing_completed = True
     return state

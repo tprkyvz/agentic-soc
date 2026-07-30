@@ -3,8 +3,9 @@ main.py – Agentic SOC giriş noktası.
 
 Kullanım:
   python -m src.agentic_soc.main --source file --log-file lab/logs/ssh_bruteforce/sample_auth.log
+  python -m src.agentic_soc.main --source file --log-type web --log-file lab/logs/web_sqli_xss/sample_access.log
   python -m src.agentic_soc.main --source docker
-  python -m src.agentic_soc.main --source docker --container victim_ssh_server
+  python -m src.agentic_soc.main --source docker --log-type web --container victim_web_server
 """
 
 import argparse
@@ -86,11 +87,17 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Örnekler:
-  Dosya modu (test):
+  Dosya modu (SSH, test):
     python -m src.agentic_soc.main --source file --log-file lab/logs/ssh_bruteforce/sample_auth.log
 
-  Docker modu (canlı):
+  Dosya modu (Web SQLi/XSS, test):
+    python -m src.agentic_soc.main --source file --log-type web --log-file lab/logs/web_sqli_xss/sample_access.log
+
+  Docker modu (canlı, SSH):
     python -m src.agentic_soc.main --source docker
+
+  Docker modu (canlı, Web):
+    python -m src.agentic_soc.main --source docker --log-type web
 
   Farklı model ile:
     python -m src.agentic_soc.main --source file --log-file mylog.txt --model mistral
@@ -103,14 +110,26 @@ def main() -> None:
         help="Log kaynağı (varsayılan: file)",
     )
     parser.add_argument(
+        "--log-type",
+        choices=["ssh", "web"],
+        default="ssh",
+        help="Senaryo tipi: ssh (brute-force) veya web (SQLi/XSS) (varsayılan: ssh)",
+    )
+    parser.add_argument(
         "--log-file",
-        default="lab/logs/ssh_bruteforce/sample_auth.log",
-        help="Analiz edilecek log dosyası (sadece --source file ile)",
+        default=None,
+        help=(
+            "Analiz edilecek log dosyası (sadece --source file ile). "
+            "Belirtilmezse --log-type'a göre bundled örnek log kullanılır."
+        ),
     )
     parser.add_argument(
         "--container",
         default=None,
-        help=f"Docker container adı (varsayılan: {settings.ssh_container_name})",
+        help=(
+            f"Docker container adı (varsayılan: --log-type ssh için "
+            f"{settings.ssh_container_name}, web için {settings.web_container_name})"
+        ),
     )
     parser.add_argument(
         "--model",
@@ -139,6 +158,14 @@ def main() -> None:
     if args.model:
         settings.ollama_model = args.model
 
+    # --log-file belirtilmediyse --log-type'a göre bundled örnek logu kullan
+    if args.log_file is None:
+        default_log_files = {
+            "ssh": "lab/logs/ssh_bruteforce/sample_auth.log",
+            "web": "lab/logs/web_sqli_xss/sample_access.log",
+        }
+        args.log_file = default_log_files[args.log_type]
+
     _print_banner()
 
     # --seed modu: KB'yi doldur ve çık
@@ -157,9 +184,9 @@ def main() -> None:
 
     # Çalıştır
     if args.source == "file":
-        run_file_mode(args.log_file)
+        run_file_mode(args.log_file, log_type=args.log_type)
     elif args.source == "docker":
-        run_docker_mode(args.container)
+        run_docker_mode(args.container, log_type=args.log_type)
 
 
 if __name__ == "__main__":

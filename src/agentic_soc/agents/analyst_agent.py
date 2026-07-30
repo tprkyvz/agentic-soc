@@ -27,25 +27,25 @@ Rules:
 """
 
 
-def _build_user_message(state: AgentState) -> str:
-    """Analyst prompt'unu state verisiyle doldur."""
-    event = state.event
-    triage = state.triage_result
-
-    usernames_str = ", ".join(event.attempted_usernames[:10]) if event.attempted_usernames else "unknown"
-
-    # KB bağlamı varsa ekle
-    kb_section = ""
-    if state.kb_context:
-        kb_section = f"""
+def _kb_section(state: AgentState) -> str:
+    if not state.kb_context:
+        return ""
+    return f"""
 
 {state.kb_context}
 
 Use the above past incidents as additional context for your analysis.
 """
 
+
+def _build_ssh_user_message(state: AgentState) -> str:
+    event = state.event
+    triage = state.triage_result
+
+    usernames_str = ", ".join(event.indicators[:10]) if event.indicators else "unknown"
+
     return f"""
-Analyze the following SSH security event:{kb_section}
+Analyze the following SSH security event:{_kb_section(state)}
 **Event Summary:**
 - Source IP: {event.source_ip or "unknown"}
 - Target Service: {event.target_service}
@@ -63,6 +63,40 @@ Provide your analysis as JSON.
 """.strip()
 
 
+def _build_web_user_message(state: AgentState) -> str:
+    event = state.event
+    triage = state.triage_result
+
+    indicators_str = ", ".join(event.indicators[:10]) if event.indicators else "none"
+
+    return f"""
+Analyze the following web application security event:{_kb_section(state)}
+**Event Summary:**
+- Source IP: {event.source_ip or "unknown"}
+- Target Service: {event.target_service} (HTTP)
+- Malicious Requests Blocked/Not-Found (non-200): {event.failed_attempts}
+- Malicious Requests That Returned HTTP 200: {event.successful_attempts}
+- Time Window: {event.time_window_seconds} seconds
+- Matched Attack Indicators: {indicators_str}
+- Threat Level (pre-classified): {triage.threat_level.value if triage else "unknown"}
+- Triage Reason: {triage.reason if triage else "N/A"}
+
+**Raw Log Sample (first 3 entries):**
+{chr(10).join(e.raw_log for e in event.raw_log_entries[:3]) if event.raw_log_entries else "No raw logs available"}
+
+The matched indicators show whether this is SQL injection, XSS, or another
+web attack pattern. Classify it accordingly (e.g. MITRE T1190 for exploitation
+of a public-facing application) and provide your analysis as JSON.
+""".strip()
+
+
+def _build_user_message(state: AgentState) -> str:
+    """Analyst prompt'unu senaryoya göre doldur (SSH vs web)."""
+    if state.event.target_service == "web":
+        return _build_web_user_message(state)
+    return _build_ssh_user_message(state)
+
+
 def _parse_llm_response(response_text: str) -> dict:
     """LLM yanıtından JSON'ı çıkar (markdown code fence'leri temizle)."""
     # ```json ... ``` bloğunu temizle
@@ -76,6 +110,47 @@ def _parse_llm_response(response_text: str) -> dict:
         raise ValueError(f"JSON bulunamadı. LLM yanıtı: {response_text[:200]}")
 
     return json.loads(cleaned[start:end])
+
+
+def _fallback_analysis(state: AgentState, unexpected: bool = False) -> AnalysisResult:
+    """LLM yanıtı parse edilemediğinde senaryoya uygun bilinen teknikle geri düş."""
+    if unexpected:
+        return AnalysisResult(
+            mitre_technique_id="T1190" if state.event.target_service == "web" else "T1110",
+            mitre_technique_name="Exploit Public-Facing Application" if state.event.target_service == "web" else "Brute Force",
+            attack_description="Analiz sırasında hata oluştu. Manuel inceleme gerekli.",
+            attacker_intent="Bilinmiyor",
+            potential_impact="Bilinmiyor",
+        )
+
+    if state.event.target_service == "web":
+        return AnalysisResult(
+            mitre_technique_id="T1190",
+            mitre_technique_name="Exploit Public-Facing Application",
+            attack_description=(
+                "Saldırgan, web uygulamasının bir parametresine SQL enjeksiyonu veya "
+                "XSS payload'ları göndererek uygulamayı istismar etmeye çalışmaktadır."
+            ),
+            attacker_intent="Web uygulaması üzerinden veri sızdırmak veya kod çalıştırmak.",
+            potential_impact=(
+                "Başarılı bir enjeksiyon veritabanı sızıntısına, oturum ele geçirmeye "
+                "veya diğer kullanıcılara yönelik saldırılara yol açabilir."
+            ),
+        )
+
+    return AnalysisResult(
+        mitre_technique_id="T1110.001",
+        mitre_technique_name="Brute Force: Password Guessing",
+        attack_description=(
+            "Saldırgan, SSH servisi üzerinde sistematik şifre tahminleri yaparak "
+            "yetkisiz erişim elde etmeye çalışmaktadır."
+        ),
+        attacker_intent="SSH üzerinden yetkisiz sistem erişimi elde etmek.",
+        potential_impact=(
+            "Başarılı bir brute-force saldırısı tam sistem erişimine, "
+            "veri sızıntısına veya pivot saldırılarına yol açabilir."
+        ),
+    )
 
 
 def analyst_node(state: AgentState) -> AgentState:
@@ -97,29 +172,10 @@ def analyst_node(state: AgentState) -> AgentState:
 
     except json.JSONDecodeError as e:
         state.errors.append(f"Analyst: JSON parse hatası – {e}")
-        # Fallback: SSH brute-force için bilinen tekniği kullan
-        state.analysis_result = AnalysisResult(
-            mitre_technique_id="T1110.001",
-            mitre_technique_name="Brute Force: Password Guessing",
-            attack_description=(
-                "Saldırgan, SSH servisi üzerinde sistematik şifre tahminleri yaparak "
-                "yetkisiz erişim elde etmeye çalışmaktadır."
-            ),
-            attacker_intent="SSH üzerinden yetkisiz sistem erişimi elde etmek.",
-            potential_impact=(
-                "Başarılı bir brute-force saldırısı tam sistem erişimine, "
-                "veri sızıntısına veya pivot saldırılarına yol açabilir."
-            ),
-        )
+        state.analysis_result = _fallback_analysis(state)
 
     except Exception as e:
         state.errors.append(f"Analyst: Beklenmeyen hata – {e}")
-        state.analysis_result = AnalysisResult(
-            mitre_technique_id="T1110",
-            mitre_technique_name="Brute Force",
-            attack_description="Analiz sırasında hata oluştu. Manuel inceleme gerekli.",
-            attacker_intent="Bilinmiyor",
-            potential_impact="Bilinmiyor",
-        )
+        state.analysis_result = _fallback_analysis(state, unexpected=True)
 
     return state

@@ -1,0 +1,9 @@
+services:
+  victim-web:
+    image: nginx:alpine
+    container_name: victim_web_server
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docroot:/usr/share/nginx/html:ro
+    restart: unless-stopped
