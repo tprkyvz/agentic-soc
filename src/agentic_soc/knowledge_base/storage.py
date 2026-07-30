@@ -22,25 +22,35 @@ _DB_PATH = Path(__file__).resolve().parents[3] / "data" / "chroma_db"
 _COLLECTION_NAME = "attack_cases"
 
 # ---------------------------------------------------------------------------
-# Client ve koleksiyon
+# Client ve koleksiyon (process başına tek seferlik, cache'lenmiş)
 # ---------------------------------------------------------------------------
 
+_client: chromadb.PersistentClient | None = None
+_collection: chromadb.Collection | None = None
+
+
 def _get_client() -> chromadb.PersistentClient:
-    """Kalıcı ChromaDB istemcisi döndür."""
-    _DB_PATH.mkdir(parents=True, exist_ok=True)
-    return chromadb.PersistentClient(
-        path=str(_DB_PATH),
-        settings=ChromaSettings(anonymized_telemetry=False),
-    )
+    """Kalıcı ChromaDB istemcisini döndür (bir kere oluşturulur, tekrar kullanılır)."""
+    global _client
+    if _client is None:
+        _DB_PATH.mkdir(parents=True, exist_ok=True)
+        _client = chromadb.PersistentClient(
+            path=str(_DB_PATH),
+            settings=ChromaSettings(anonymized_telemetry=False),
+        )
+    return _client
 
 
 def get_collection() -> chromadb.Collection:
-    """attack_cases koleksiyonunu al (yoksa oluştur)."""
-    client = _get_client()
-    return client.get_or_create_collection(
-        name=_COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"},  # Cosine similarity
-    )
+    """attack_cases koleksiyonunu al (yoksa oluştur, sonra cache'ten döndür)."""
+    global _collection
+    if _collection is None:
+        client = _get_client()
+        _collection = client.get_or_create_collection(
+            name=_COLLECTION_NAME,
+            metadata={"hnsw:space": "cosine"},  # Cosine similarity
+        )
+    return _collection
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +97,15 @@ def get_case(case_id: str) -> AttackCase | None:
     if not result["ids"]:
         return None
     return AttackCase.model_validate_json(result["metadatas"][0]["full_json"])
+
+
+def list_cases() -> list[AttackCase]:
+    """KB'deki tüm vakaları döndür (dashboard ve toplu görünümler için)."""
+    collection = get_collection()
+    if collection.count() == 0:
+        return []
+    result = collection.get(include=["metadatas"])
+    return [AttackCase.model_validate_json(m["full_json"]) for m in result["metadatas"]]
 
 
 def count_cases() -> int:

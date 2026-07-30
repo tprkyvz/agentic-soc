@@ -4,8 +4,11 @@
 > Agentic SOC: a multi-agent system that sends complex logs to an LLM and answers:
 > *Is this an attack? Which vulnerability does it target? How can I mitigate it?*
 
- At this point, **no real logic is implemented**; 
-only folders, placeholder files, and documentation stubs exist.
+A working prototype is implemented end-to-end for the **SSH brute-force** scenario:
+log ingestion (file or live Docker stream) → rule-based triage → KB similarity
+lookup (RAG) → LLM-based MITRE ATT&CK analysis → LLM-based mitigation advice →
+learning the new case back into the knowledge base. See
+[Running the Project](#running-the-project) below.
 
 ### High-Level Goals
 
@@ -27,15 +30,17 @@ agentic-soc/
   README.md
   requirements.txt
 
-  src/                  # Main application code
-    agents/            # Agent definitions (triage, analyst, KB, etc.)
-    engine/            # Orchestration, pipelines, and message routing
-    knowledge_base/    # RAG, vector DB, and attack history
-    utils/             # Shared helpers (config, logging, parsing)
+  src/agentic_soc/      # Main application code (installable package)
+    agents/            # Triage / Analyst / Mitigation / KB agent nodes
+    engine/            # Pydantic models, LangGraph graph, pipeline, CLI entry (main.py)
+    knowledge_base/     # RAG: ChromaDB storage, embeddings, retriever, seeder
+    utils/             # Config, Ollama LLM client, log parsers
 
   lab/                  # Experimental lab (attack generation)
     victims/           # Vulnerable services / apps in Docker
     logs/              # Sample / recorded logs for experiments
+
+  data/                 # Generated at runtime: ChromaDB vector store (gitignored)
 
   notebooks/            # Jupyter experiments and quick prototypes
 
@@ -50,42 +55,64 @@ Each major directory also has its own `README` to explain its role in the projec
 
 ---
 
-## Running the Project (Placeholder)
+## Running the Project
 
-At this stage, there is intentionally **no runnable application**. As you progress, you will:
+Prerequisites:
 
-- Define a minimal CLI or API entry point in `src/engine/` (e.g. FastAPI or a CLI script).
-- Add installers and environment setup instructions here.
+- Python 3.10+, `pip install -r requirements.txt`
+- [Ollama](https://ollama.com) running locally with `llama3.2` and `nomic-embed-text` pulled
+  (`ollama pull llama3.2 && ollama pull nomic-embed-text`)
+- Docker, only if you want to run the live lab scenario
+- Copy `.env.example` to `.env` and adjust if needed
 
-Until then, you can treat this repository as a **design and documentation container**.
+Seed the knowledge base once (loads a handful of MITRE-mapped SSH attack cases):
+
+```bash
+python -m src.agentic_soc.main --seed
+```
+
+Analyze a static log file (works without Docker, uses the bundled sample):
+
+```bash
+python -m src.agentic_soc.main --source file --log-file lab/logs/ssh_bruteforce/sample_auth.log
+```
+
+Analyze a live attack against the lab's vulnerable SSH container:
+
+```bash
+docker compose -f lab/victims/ssh-bruteforce/docker-compose.yml up -d
+python -m src.agentic_soc.main --source docker   # in one terminal
+bash lab/victims/ssh-bruteforce/attack.sh          # in another terminal
+```
 
 ---
 
 ## Long-Term Milestones (Very High Level)
 
-- **Milestone 1 – Concept & Research**
+- **Milestone 1 – Concept & Research** ✅
   - Clarify requirements: threat model, log sources, target users.
-  - Select LLM provider(s) and vector DB technology.
+  - Select LLM provider(s) and vector DB technology (Ollama local models + ChromaDB).
   - Study SOC workflows and attack categorizations (e.g., MITRE ATT&CK).
 
-- **Milestone 2 – Lab & Data**
-  - Spin up vulnerable services in `lab/victims`.
-  - Generate attacks and collect logs into `lab/logs`.
-  - Define log formats and normalization strategy in `src/utils`.
+- **Milestone 2 – Lab & Data** ✅ (SSH brute-force scenario only)
+  - Spin up a vulnerable SSH service in `lab/victims`.
+  - Generate attacks (`attack.sh`) and collect a sample log into `lab/logs`.
+  - Define log formats and normalization strategy in `src/agentic_soc/utils/parsers.py`.
+  - Still open: additional log sources (web server, IDS, application logs).
 
-- **Milestone 3 – Core Engine & Single-Agent Prototype**
-  - Implement a simple log ingestion pipeline in `src/engine`.
-  - Add a single “monolithic” LLM agent in `src/agents` that explains logs.
+- **Milestone 3 – Core Engine & Single-Agent Prototype** ✅
+  - Log ingestion pipeline in `src/agentic_soc/engine/pipeline.py` (file + live Docker modes).
+  - LLM-based analyst agent that explains/classifies events.
 
-- **Milestone 4 – Multi-Agent Architecture**
-  - Split roles into Triage / Analyst / KB Agent.
-  - Implement message passing and orchestration in the engine.
+- **Milestone 4 – Multi-Agent Architecture** ✅
+  - Roles split into Triage (rule-based) / Analyst / Mitigation / Knowledge-Base agents.
+  - Orchestrated as a LangGraph state graph in `src/agentic_soc/engine/graph.py`.
 
-- **Milestone 5 – Knowledge Base & RAG**
-  - Populate `knowledge_base` with past attacks and patterns.
-  - Integrate retrieval-augmented generation over this data.
+- **Milestone 5 – Knowledge Base & RAG** ✅
+  - `knowledge_base/` seeded with MITRE-mapped attack cases, embedded via `nomic-embed-text`.
+  - Analyst agent retrieval-augmented with similar past cases; new cases are learned back (`kb_save_node`).
 
-- **Milestone 6 – Evaluation & Thesis**
+- **Milestone 6 – Evaluation & Thesis** ⬜ (not started)
   - Design quantitative and qualitative evaluation scenarios.
   - Document findings in `docs/reports` and `docs/architecture`.
 

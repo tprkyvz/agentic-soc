@@ -10,7 +10,6 @@ from ..utils.config import settings
 
 # Embedding için kullanılacak model
 EMBEDDING_MODEL = "nomic-embed-text"
-_OLLAMA_EMBED_URL = f"{settings.ollama_base_url}/api/embeddings"
 
 
 def embed_text(text: str) -> list[float]:
@@ -26,9 +25,13 @@ def embed_text(text: str) -> list[float]:
     Raises:
         RuntimeError: Ollama erişilemez veya model yüklü değilse
     """
+    # settings.ollama_base_url her çağrıda dinamik okunur (llm_client.get_llm
+    # ile tutarlı olması için) – import anında sabitlenirse runtime'da
+    # değiştirilen base_url'ler embedding isteklerine yansımaz.
+    embed_url = f"{settings.ollama_base_url}/api/embeddings"
     try:
         resp = httpx.post(
-            _OLLAMA_EMBED_URL,
+            embed_url,
             json={"model": EMBEDDING_MODEL, "prompt": text},
             timeout=30.0,
         )

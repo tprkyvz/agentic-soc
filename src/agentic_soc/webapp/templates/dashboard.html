@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic SOC — Dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:          #f5f7f6;
+    --surface:       #ffffff;
+    --surface-2:     #eef1f0;
+    --border:        rgba(14, 23, 21, 0.11);
+    --border-2:      rgba(14, 23, 21, 0.07);
+    --ink:           #10181a;
+    --ink-2:         #4a5658;
+    --ink-3:         #7c8888;
+    --accent:        #0e7f8c;
+    --accent-ink:    #075e68;
+    --accent-soft:   rgba(14, 127, 140, 0.10);
+    --accent-soft-2: rgba(14, 127, 140, 0.20);
+    --good:          #0ca30c;
+    --warning:       #c98500;
+    --serious:       #d1653a;
+    --critical:      #d03b3b;
+    --good-soft:     rgba(12, 163, 12, 0.12);
+    --warning-soft:  rgba(201, 133, 0, 0.14);
+    --serious-soft:  rgba(209, 101, 58, 0.13);
+    --critical-soft: rgba(208, 59, 59, 0.12);
+    --shadow: 0 1px 2px rgba(16, 24, 26, 0.04), 0 8px 24px rgba(16, 24, 26, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0a0e10; --surface: #12181b; --surface-2: #171e21;
+      --border: rgba(255,255,255,0.09); --border-2: rgba(255,255,255,0.06);
+      --ink: #edf3f3; --ink-2: #a7b3b4; --ink-3: #71807f;
+      --accent: #3fc2cf; --accent-ink: #7fdae3;
+      --accent-soft: rgba(63,194,207,0.13); --accent-soft-2: rgba(63,194,207,0.24);
+      --good: #21b64b; --warning: #e0a422; --serious: #e37c52; --critical: #e6605c;
+      --good-soft: rgba(33,182,75,0.14); --warning-soft: rgba(224,164,34,0.14);
+      --serious-soft: rgba(227,124,82,0.14); --critical-soft: rgba(230,96,92,0.14);
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0a0e10; --surface: #12181b; --surface-2: #171e21;
+    --border: rgba(255,255,255,0.09); --border-2: rgba(255,255,255,0.06);
+    --ink: #edf3f3; --ink-2: #a7b3b4; --ink-3: #71807f;
+    --accent: #3fc2cf; --accent-ink: #7fdae3;
+    --accent-soft: rgba(63,194,207,0.13); --accent-soft-2: rgba(63,194,207,0.24);
+    --good: #21b64b; --warning: #e0a422; --serious: #e37c52; --critical: #e6605c;
+    --good-soft: rgba(33,182,75,0.14); --warning-soft: rgba(224,164,34,0.14);
+    --serious-soft: rgba(227,124,82,0.14); --critical-soft: rgba(230,96,92,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", system-ui, Roboto, sans-serif;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace; }
+  a { color: var(--accent-ink); }
+
+  .page { max-width: 1040px; margin: 0 auto; padding: 28px 20px 64px; display: flex; flex-direction: column; gap: 22px; }
+
+  /* topbar */
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px 10px 0 0; border-bottom: none; }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border-2); }
+  .dot.r { background: var(--critical); opacity: .55; } .dot.y { background: var(--warning); opacity: .55; } .dot.g { background: var(--good); opacity: .55; }
+  .path { font-size: 12.5px; color: var(--ink-3); }
+  .path b { color: var(--ink-2); font-weight: 600; }
+  .live-status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-3); }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); }
+  .live-dot.ok { background: var(--good); box-shadow: 0 0 0 3px var(--good-soft); }
+  .live-dot.bad { background: var(--critical); box-shadow: 0 0 0 3px var(--critical-soft); }
+
+  .hero { background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 14px 14px;
+    padding: 26px 30px 28px; box-shadow: var(--shadow); }
+  .eyebrow { text-transform: uppercase; letter-spacing: .09em; font-size: 11.5px; font-weight: 700; color: var(--accent-ink);
+    display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .hero h1 { font-size: clamp(21px, 3vw, 27px); line-height: 1.2; letter-spacing: -.01em; margin: 0 0 8px; text-wrap: balance; }
+  .hero p { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: 14.5px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px 26px 26px; }
+  .panel h2 { font-size: 17.5px; letter-spacing: -.01em; margin: 0 0 4px; }
+  .panel .panel-desc { color: var(--ink-2); font-size: 13.5px; margin: 0 0 18px; max-width: 62ch; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+
+  .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+
+  /* form controls */
+  .tabs { display: inline-flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 9px; padding: 3px; margin-bottom: 16px; }
+  .tab-btn { border: none; background: transparent; color: var(--ink-2); font-size: 12.5px; font-weight: 600; padding: 6px 13px; border-radius: 7px; cursor: pointer; }
+  .tab-btn.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .tab-btn:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  select, textarea {
+    width: 100%; font-family: inherit; font-size: 13.5px; color: var(--ink);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
+  }
+  textarea { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; min-height: 130px; resize: vertical; }
+  label.field-label { display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin-bottom: 7px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 700; padding: 9px 18px;
+    border-radius: 8px; border: 1px solid transparent; cursor: pointer; background: var(--accent); color: #fff; }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.ghost { background: transparent; border-color: var(--border); color: var(--ink-2); }
+  .btn-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+
+  .spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+  .alert { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; padding: 11px 14px; border-radius: 9px; margin-top: 14px; }
+  .alert.error { background: var(--critical-soft); color: var(--ink); border: 1px solid var(--critical-soft); }
+  .alert.error b { color: var(--critical); }
+  .hint { font-size: 12px; color: var(--ink-3); margin-top: 10px; }
+
+  .empty-state { padding: 30px 10px; text-align: center; color: var(--ink-3); font-size: 13.5px; }
+
+  /* result cards */
+  .result-card { border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+  .result-card:last-child { margin-bottom: 0; }
+  .result-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .result-ip { font-size: 14px; font-weight: 700; }
+  .verdict { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; padding: 4px 10px; border-radius: 999px; }
+  .verdict::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .verdict.benign { color: var(--good); background: var(--good-soft); } .verdict.benign::before { background: var(--good); }
+  .verdict.suspicious { color: var(--warning); background: var(--warning-soft); } .verdict.suspicious::before { background: var(--warning); }
+  .verdict.malicious { color: var(--critical); background: var(--critical-soft); } .verdict.malicious::before { background: var(--critical); }
+
+  .kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 18px; margin-bottom: 8px; }
+  .kv-grid .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); font-weight: 700; margin-bottom: 2px; }
+  .kv-grid .v { font-size: 13px; font-variant-numeric: tabular-nums; }
+  .reason { font-size: 12.5px; color: var(--ink-2); margin: 8px 0 0; }
+
+  .mitre-box { margin-top: 14px; padding: 13px 15px; border-radius: 10px; background: var(--warning-soft); }
+  .mitre-box .mitre-id { font-weight: 700; font-size: 13px; }
+  .mitre-box p { margin: 6px 0 0; font-size: 13px; color: var(--ink-2); }
+  .mitre-box .impact-row { display: flex; gap: 18px; margin-top: 8px; flex-wrap: wrap; font-size: 12.5px; }
+
+  .mitigation-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+  .mit-col-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; margin-bottom: 6px; }
+  .mit-col.immediate .mit-col-title { color: var(--critical); }
+  .mit-col.short .mit-col-title { color: var(--warning); }
+  .mit-col.long .mit-col-title { color: var(--accent-ink); }
+  .mit-col ul { margin: 0; padding-left: 16px; font-size: 12.5px; color: var(--ink-2); }
+  .mit-col li { margin-bottom: 4px; }
+  .commands { margin-top: 10px; background: var(--surface-2); border-radius: 8px; padding: 10px 12px; font-size: 12px; overflow-x: auto; }
+  .commands div { white-space: pre; margin-bottom: 4px; }
+  .commands div:last-child { margin-bottom: 0; }
+
+  /* kb + tables */
+  .bar-block { margin-bottom: 18px; } .bar-block:last-child { margin-bottom: 0; }
+  .bar-block-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: var(--ink-3); margin-bottom: 9px; }
+  .bar-row { display: grid; grid-template-columns: 130px 1fr 24px; align-items: center; gap: 10px; margin-bottom: 7px; }
+  .bar-row:last-child { margin-bottom: 0; }
+  .bar-row .bar-label { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-row .dot2 { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .bar-track { background: var(--surface-2); border-radius: 5px; height: 9px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 5px; transition: width .3s ease; }
+  .bar-row .bar-count { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); font-weight: 700; padding: 0 10px 8px 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--border-2); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .sev-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
+  .sev-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .sev-chip.critical::before { background: var(--critical); } .sev-chip.critical { color: var(--critical); }
+  .sev-chip.high::before { background: var(--serious); } .sev-chip.high { color: var(--serious); }
+  .sev-chip.medium::before { background: var(--warning); } .sev-chip.medium { color: var(--warning); }
+  .sev-chip.low::before { background: var(--good); } .sev-chip.low { color: var(--good); }
+
+  footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 4px 6px; color: var(--ink-3); font-size: 12px; }
+  .stack-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .stack-chip { font-size: 11px; padding: 4px 9px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-2); color: var(--ink-2); }
+
+  @media (max-width: 760px) {
+    .grid-2col { grid-template-columns: 1fr; }
+    .mitigation-cols { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <div class="path mono">agentic-soc <b>/</b> dashboard</div>
+    </div>
+    <div class="live-status" id="liveStatus"><span class="live-dot" id="liveDot"></span><span id="liveText">bağlanıyor…</span></div>
+  </div>
+
+  <div class="hero">
+    <p class="eyebrow">Agentic SOC · Local Dashboard</p>
+    <h1>SSH güvenlik olaylarını analiz et, bilgi tabanını izle.</h1>
+    <p>Bir log dosyası seç veya log satırı yapıştır; triage → KB araması → MITRE analizi → mitigation önerisi zincirini canlı çalıştır.</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Analiz Çalıştır</h2></div>
+    <p class="panel-desc">Şüpheli/kötü niyetli olaylar için yerel LLM çağrılır (birkaç saniye sürebilir).</p>
+
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active mono" data-tab="file" type="button">dosya seç</button>
+      <button class="tab-btn mono" data-tab="paste" type="button">log yapıştır</button>
+    </div>
+
+    <div id="tab-file">
+      <label class="field-label" for="logFileSelect">Örnek log dosyası</label>
+      <select id="logFileSelect"></select>
+    </div>
+
+    <div id="tab-paste" style="display:none;">
+      <label class="field-label" for="logTextArea">Ham log satırları</label>
+      <textarea id="logTextArea" placeholder="Failed password for root from 203.0.113.7 port 51234 ssh2&#10;..."></textarea>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="runBtn" type="button"><span id="runBtnLabel">Analizi Çalıştır</span></button>
+      <span class="hint" id="runHint"></span>
+    </div>
+    <div id="errorBox"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Sonuçlar</h2></div>
+    <div id="results"><div class="empty-state">Henüz analiz çalıştırılmadı.</div></div>
+  </div>
+
+  <div class="grid-2col">
+    <div class="panel">
+      <div class="panel-head"><h2>Bilgi Tabanı</h2><span class="hint mono" id="kbTotal"></span></div>
+      <div id="kbBars"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Son Aktivite</h2><button class="btn ghost" id="refreshRecentBtn" type="button" style="padding:5px 11px;font-size:11.5px;">Yenile</button></div>
+      <p class="panel-desc" style="margin-bottom:10px;">Bu oturuma özel — sunucu yeniden başlayınca sıfırlanır.</p>
+      <div class="table-scroll"><table id="recentTable"><thead><tr><th>IP</th><th>Başarısız</th><th>Seviye</th></tr></thead><tbody></tbody></table></div>
+      <div id="recentEmpty" class="empty-state" style="display:none;">Kayıt yok.</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Bilgi Tabanı Vakaları</h2></div>
+    <div class="table-scroll">
+      <table id="kbTable">
+        <thead><tr><th>Başlık</th><th>MITRE</th><th>Tür</th><th>Ciddiyet</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    <div class="stack-chips">
+      <span class="stack-chip mono">FastAPI</span>
+      <span class="stack-chip mono">LangGraph</span>
+      <span class="stack-chip mono">Ollama · llama3.2</span>
+      <span class="stack-chip mono">ChromaDB</span>
+    </div>
+    <div>127.0.0.1:8000</div>
+  </footer>
+
+</div>
+
+<script>
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const severityToChipClass = { critical: 'critical', high: 'high', medium: 'medium', low: 'low' };
+const threatVerdictClass = { benign: 'benign', suspicious: 'suspicious', malicious: 'malicious' };
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detail = (body && body.detail) ? body.detail : `HTTP ${res.status}`;
+    throw new Error(detail);
+  }
+  return body;
+}
+
+async function loadStatus() {
+  const dot = document.getElementById('liveDot');
+  const text = document.getElementById('liveText');
+  try {
+    const s = await api('/api/status');
+    dot.className = 'live-dot ' + (s.ollama_connected ? 'ok' : 'bad');
+    text.textContent = `${s.ollama_connected ? 'Ollama bağlı' : 'Ollama bağlı değil'} · ${esc(s.ollama_model)} · KB: ${s.kb_case_count} vaka`;
+  } catch (e) {
+    dot.className = 'live-dot bad';
+    text.textContent = 'durum alınamadı';
+  }
+}
+
+async function loadSamples() {
+  const select = document.getElementById('logFileSelect');
+  try {
+    const files = await api('/api/logs/samples');
+    select.innerHTML = files.length
+      ? files.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('')
+      : '<option value="">(örnek log bulunamadı)</option>';
+  } catch (e) {
+    select.innerHTML = '<option value="">(yüklenemedi)</option>';
+  }
+}
+
+function severityChipClass(sev) { return severityToChipClass[sev] || 'medium'; }
+
+function renderKBBars(stats) {
+  document.getElementById('kbTotal').textContent = `${stats.total} vaka`;
+  const order = ['critical', 'high', 'medium', 'low'];
+  const colorVar = { critical: '--critical', high: '--serious', medium: '--warning', low: '--good' };
+  const bySev = stats.by_severity || {};
+  const maxSev = Math.max(1, ...Object.values(bySev));
+  let sevHtml = '<div class="bar-block"><div class="bar-block-title">Ciddiyete göre</div>';
+  for (const level of order) {
+    const count = bySev[level] || 0;
+    if (!count) continue;
+    const pct = Math.round((count / maxSev) * 100);
+    sevHtml += `<div class="bar-row">
+      <span class="bar-label"><span class="dot2" style="background:var(${colorVar[level]})"></span>${esc(level[0].toUpperCase()+level.slice(1))}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(${colorVar[level]})"></div></div>
+      <span class="bar-count mono">${count}</span>
+    </div>`;
+  }
+  sevHtml += '</div>';
+
+  const byType = stats.by_attack_type || {};
+  const maxType = Math.max(1, ...Object.values(byType));
+  let typeHtml = '<div class="bar-block"><div class="bar-block-title">Saldırı türüne göre</div>';
+  for (const [type, count] of Object.entries(byType)) {
+    const pct = Math.round((count / maxType) * 100);
+    const label = type.replace(/_/g, ' ');
+    typeHtml += `<div class="bar-row">
+      <span class="bar-label"><span class="dot2" style="background:var(--accent)"></span>${esc(label)}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+      <span class="bar-count mono">${count}</span>
+    </div>`;
+  }
+  typeHtml += '</div>';
+
+  document.getElementById('kbBars').innerHTML = (stats.total ? sevHtml + typeHtml : '<div class="empty-state">Bilgi tabanı boş.</div>');
+}
+
+async function loadKB() {
+  try {
+    const [stats, cases] = await Promise.all([api('/api/kb/stats'), api('/api/kb/cases')]);
+    renderKBBars(stats);
+    const tbody = document.querySelector('#kbTable tbody');
+    tbody.innerHTML = cases.map(c => `<tr>
+      <td>${esc(c.title)}</td>
+      <td class="mono">${esc(c.mitre_technique_id)}</td>
+      <td>${esc(c.attack_type.replace(/_/g, ' '))}</td>
+      <td><span class="sev-chip ${severityChipClass(c.severity)}">${esc(c.severity)}</span></td>
+    </tr>`).join('') || '<tr><td colspan="4" style="color:var(--ink-3);">Bilgi tabanı boş.</td></tr>';
+  } catch (e) {
+    document.getElementById('kbBars').innerHTML = `<div class="empty-state">KB yüklenemedi: ${esc(e.message)}</div>`;
+  }
+}
+
+async function loadRecent() {
+  try {
+    const events = await api('/api/events/recent');
+    const tbody = document.querySelector('#recentTable tbody');
+    const empty = document.getElementById('recentEmpty');
+    if (!events.length) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = events.map(ev => `<tr>
+      <td class="mono">${esc(ev.source_ip || 'bilinmiyor')}</td>
+      <td class="num mono">${ev.failed_attempts}</td>
+      <td><span class="verdict ${threatVerdictClass[ev.threat_level] || ''}">${esc(ev.threat_level || '—')}</span></td>
+    </tr>`).join('');
+  } catch (e) { /* sessizce geç */ }
+}
+
+function renderResults(events) {
+  const box = document.getElementById('results');
+  if (!events.length) {
+    box.innerHTML = '<div class="empty-state">Bu log için SSH ile ilgili olay bulunamadı.</div>';
+    return;
+  }
+  box.innerHTML = events.map(ev => {
+    const verdict = ev.threat_level || 'benign';
+    let mitre = '';
+    if (ev.mitre_technique_id) {
+      mitre = `<div class="mitre-box">
+        <div class="mitre-id">${esc(ev.mitre_technique_id)} — ${esc(ev.mitre_technique_name)}</div>
+        <p>${esc(ev.attack_description)}</p>
+        <div class="impact-row">
+          <div><b>Niyet:</b> ${esc(ev.attacker_intent)}</div>
+          <div><b>Etki:</b> ${esc(ev.potential_impact)}</div>
+        </div>
+      </div>`;
+    }
+    let mitigation = '';
+    if (ev.immediate_actions && ev.immediate_actions.length) {
+      const col = (title, cls, items) => `<div class="mit-col ${cls}"><div class="mit-col-title">${title}</div><ul>${items.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`;
+      mitigation = `<div class="mitigation-cols">
+        ${col('Acil', 'immediate', ev.immediate_actions)}
+        ${col('Kısa Vadeli', 'short', ev.short_term_actions)}
+        ${col('Uzun Vadeli', 'long', ev.long_term_actions)}
+      </div>`;
+      if (ev.example_commands && ev.example_commands.length) {
+        mitigation += `<div class="commands mono">${ev.example_commands.map(c => `<div>$ ${esc(c)}</div>`).join('')}</div>`;
+      }
+    }
+    return `<div class="result-card">
+      <div class="result-head">
+        <span class="result-ip mono">${esc(ev.source_ip || 'bilinmiyor')}</span>
+        <span class="verdict ${threatVerdictClass[verdict] || ''}">${esc(verdict)}</span>
+      </div>
+      <div class="kv-grid">
+        <div><div class="k">Güven</div><div class="v">%${Math.round((ev.confidence || 0) * 100)}</div></div>
+        <div><div class="k">Başarısız</div><div class="v">${ev.failed_attempts}</div></div>
+        <div><div class="k">Başarılı</div><div class="v">${ev.successful_attempts}</div></div>
+        <div><div class="k">Kullanıcılar</div><div class="v">${esc(ev.attempted_usernames.slice(0,5).join(', ') || '—')}</div></div>
+      </div>
+      <p class="reason">${esc(ev.triage_reason)}</p>
+      ${mitre}
+      ${mitigation}
+    </div>`;
+  }).join('');
+}
+
+function setSource(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('tab-file').style.display = tab === 'file' ? 'block' : 'none';
+  document.getElementById('tab-paste').style.display = tab === 'paste' ? 'block' : 'none';
+}
+
+async function runAnalysis() {
+  const btn = document.getElementById('runBtn');
+  const label = document.getElementById('runBtnLabel');
+  const hint = document.getElementById('runHint');
+  const errorBox = document.getElementById('errorBox');
+  const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
+
+  let payload;
+  if (activeTab === 'file') {
+    const file = document.getElementById('logFileSelect').value;
+    if (!file) { errorBox.innerHTML = '<div class="alert error"><b>Hata:</b> log dosyası seçilmedi.</div>'; return; }
+    payload = { log_file: file };
+  } else {
+    const text = document.getElementById('logTextArea').value.trim();
+    if (!text) { errorBox.innerHTML = '<div class="alert error"><b>Hata:</b> log metni boş.</div>'; return; }
+    payload = { log_text: text };
+  }
+
+  errorBox.innerHTML = '';
+  btn.disabled = true;
+  label.innerHTML = '<span class="spinner"></span> Analiz ediliyor…';
+  hint.textContent = 'Şüpheli olaylar için yerel LLM çağrılıyor, biraz sürebilir.';
+
+  try {
+    const results = await api('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    renderResults(results);
+    await Promise.all([loadRecent(), loadKB(), loadStatus()]);
+  } catch (e) {
+    errorBox.innerHTML = `<div class="alert error"><b>Hata:</b> ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Analizi Çalıştır';
+    hint.textContent = '';
+  }
+}
+
+document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => setSource(b.dataset.tab)));
+document.getElementById('runBtn').addEventListener('click', runAnalysis);
+document.getElementById('refreshRecentBtn').addEventListener('click', loadRecent);
+
+loadStatus();
+loadSamples();
+loadKB();
+loadRecent();
+</script>
+</body>
+</html>

@@ -24,3 +24,7 @@ python-dotenv>=1.0.0
 
 # Terminal çıktısı
 rich>=13.0.0
+
+# Local dashboard
+fastapi>=0.110.0
+uvicorn>=0.29.0

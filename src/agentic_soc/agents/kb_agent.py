@@ -8,12 +8,59 @@ agents/kb_agent.py – Knowledge Base Agent.
 
 from __future__ import annotations
 
-import uuid
-
-from ..engine.models import AgentState, ThreatLevel
+from ..engine.models import AgentState, AnalysisResult, ThreatLevel
 from ..knowledge_base.retriever import find_similar_cases, format_kb_context
 from ..knowledge_base.schemas import AttackCase, AttackType, Severity
 from ..knowledge_base.storage import save_case, count_cases
+
+# MITRE ATT&CK teknik ID öneki → AttackType eşlemesi.
+# Prefix, alt teknikleri de kapsayacak şekilde eşleşir (örn. "T1110" → "T1110.001").
+_MITRE_PREFIX_TO_ATTACK_TYPE: dict[str, AttackType] = {
+    "T1110": AttackType.BRUTE_FORCE,             # Brute Force
+    "T1078": AttackType.CREDENTIAL_STUFFING,      # Valid Accounts (seed verisiyle tutarlı)
+    "T1046": AttackType.PORT_SCAN,                # Network Service Discovery
+    "T1190": AttackType.SQL_INJECTION,            # Exploit Public-Facing Application
+    "T1068": AttackType.PRIVILEGE_ESCALATION,     # Exploitation for Privilege Escalation
+    "T1548": AttackType.PRIVILEGE_ESCALATION,     # Abuse Elevation Control Mechanism
+    "T1021": AttackType.LATERAL_MOVEMENT,         # Remote Services
+    "T1570": AttackType.LATERAL_MOVEMENT,         # Lateral Tool Transfer
+    "T1041": AttackType.EXFILTRATION,             # Exfiltration Over C2 Channel
+    "T1048": AttackType.EXFILTRATION,             # Exfiltration Over Alternative Protocol
+}
+
+# Teknik ID eşleşmezse açıklama metnindeki anahtar kelimelere göre ikinci tahmin.
+_KEYWORD_TO_ATTACK_TYPE: list[tuple[str, AttackType]] = [
+    ("sql injection", AttackType.SQL_INJECTION),
+    ("cross-site scripting", AttackType.XSS),
+    ("xss", AttackType.XSS),
+    ("privilege escalation", AttackType.PRIVILEGE_ESCALATION),
+    ("lateral movement", AttackType.LATERAL_MOVEMENT),
+    ("exfiltrat", AttackType.EXFILTRATION),
+    ("port scan", AttackType.PORT_SCAN),
+    ("port taraması", AttackType.PORT_SCAN),
+    ("credential stuffing", AttackType.CREDENTIAL_STUFFING),
+    ("default credential", AttackType.CREDENTIAL_STUFFING),
+    ("brute force", AttackType.BRUTE_FORCE),
+    ("brute-force", AttackType.BRUTE_FORCE),
+]
+
+
+def _infer_attack_type(analysis: AnalysisResult) -> AttackType:
+    """
+    Analyst'in ürettiği MITRE teknik ID'sinden (ve gerekirse açıklama
+    metninden) en uygun AttackType'ı çıkar. Hiçbiri eşleşmezse UNKNOWN döner.
+    """
+    technique_id = analysis.mitre_technique_id or ""
+    for prefix, attack_type in _MITRE_PREFIX_TO_ATTACK_TYPE.items():
+        if technique_id.startswith(prefix):
+            return attack_type
+
+    haystack = f"{analysis.mitre_technique_name} {analysis.attack_description}".lower()
+    for keyword, attack_type in _KEYWORD_TO_ATTACK_TYPE:
+        if keyword in haystack:
+            return attack_type
+
+    return AttackType.UNKNOWN
 
 
 def kb_query_node(state: AgentState) -> AgentState:
@@ -77,7 +124,7 @@ def kb_save_node(state: AgentState) -> AgentState:
         new_case = AttackCase(
             id=f"learned-{state.event.event_id[:8]}",
             title=f"{analysis.mitre_technique_name} from {state.event.source_ip or 'unknown'}",
-            attack_type=AttackType.BRUTE_FORCE,   # Şimdilik sabit, ilerleyen sürümde LLM belirleyecek
+            attack_type=_infer_attack_type(analysis),
             mitre_technique_id=analysis.mitre_technique_id,
             mitre_technique_name=analysis.mitre_technique_name,
             severity=severity_map.get(triage.threat_level, Severity.HIGH),

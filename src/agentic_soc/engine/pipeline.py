@@ -36,21 +36,33 @@ def _group_events_from_parsed(
 ) -> list[SecurityEvent]:
     """
     Parse edilmiş SSH olaylarını IP bazında grupla ve SecurityEvent listesi döndür.
+
+    parsed_events ve raw_entries indeks bazında birebir eşleşir (aynı satırdan
+    üretilirler); bu eşleşme IP'ye göre ham logları doğru olaya bağlamak için
+    kullanılır (IP metnini ham log içinde arayarak eşleştirmek yanlış IP'lerin
+    birbirine karışmasına yol açabiliyordu, örn. "10.0.0.5" ile "10.0.0.55").
     """
-    # IP başına olayları grupla
+    # OpenSSH, olmayan bir kullanıcı için hem "Invalid user" hem de
+    # "Failed password for invalid user" satırı basar – aynı deneme için iki
+    # ayrı ParsedSSHEvent üretilir. Sadece "failed_password" sayılmalı, yoksa
+    # başarısız giriş sayısı gerçek değerin ~2 katına çıkar (bkz. triage eşiği).
     by_ip: dict[str, list[ParsedSSHEvent]] = defaultdict(list)
-    for ev in parsed_events:
+    raw_by_ip: dict[str, list[LogEntry]] = defaultdict(list)
+    for ev, raw in zip(parsed_events, raw_entries):
+        if ev.event_type == "other":
+            continue
         key = ev.ip_address or "unknown"
         by_ip[key].append(ev)
+        raw_by_ip[key].append(raw)
 
     security_events = []
     for ip, events in by_ip.items():
-        failed = sum(1 for e in events if e.event_type in ("failed_password", "invalid_user"))
+        failed = sum(1 for e in events if e.event_type == "failed_password")
         success = sum(1 for e in events if e.event_type == "accepted")
         usernames = list(dict.fromkeys(e.username for e in events if e.username))  # sıralı unique
 
-        # IP'ye ait ham logları bul
-        ip_raw = [r for r in raw_entries if ip in r.raw_log] or raw_entries[:5]
+        # IP'ye ait ham loglar (indeks eşleşmesiyle doğru gruplanmış)
+        ip_raw = raw_by_ip[ip]
 
         summary = (
             f"{failed} başarısız, {success} başarılı giriş – "
@@ -153,6 +165,31 @@ def _print_report(state_dict: dict) -> None:
 # Log kaynakları
 # ---------------------------------------------------------------------------
 
+def _parse_lines(lines: list[str], source: str) -> tuple[list[ParsedSSHEvent], list[LogEntry]]:
+    """Ham log satırlarını parse et; parsed ve raw_entries indeks bazında eşleşir."""
+    parsed: list[ParsedSSHEvent] = []
+    raw_entries: list[LogEntry] = []
+    for line in lines:
+        ev = parse_ssh_line(line)
+        if ev:
+            parsed.append(ev)
+            raw_entries.append(LogEntry(source=source, raw_log=line, log_source_type=LogSource.FILE))
+    return parsed, raw_entries
+
+
+def analyze_log_text(text: str, source: str = "upload") -> list[dict]:
+    """
+    Ham log metnini parse edip graph'tan geçir, AgentState dict listesi döndür.
+
+    Konsola basmaz – CLI dışı çağıranlar (örn. dashboard API) için kullanılır.
+    """
+    parsed, raw_entries = _parse_lines(text.splitlines(), source)
+    if not parsed:
+        return []
+    security_events = _group_events_from_parsed(parsed, raw_entries, source)
+    return [soc_graph.invoke(AgentState(event=event).model_dump()) for event in security_events]
+
+
 def _run_on_events(security_events: list[SecurityEvent]) -> None:
     """SecurityEvent listesini graph'tan geçir ve raporları bas."""
     for event in security_events:
@@ -173,14 +210,7 @@ def run_file_mode(log_file: str) -> None:
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     console.print(f"[dim]{len(lines)} satır okundu.[/dim]")
 
-    parsed = []
-    raw_entries = []
-    for line in lines:
-        ev = parse_ssh_line(line)
-        if ev:
-            parsed.append(ev)
-            raw_entries.append(LogEntry(source=str(path), raw_log=line, log_source_type=LogSource.FILE))
-
+    parsed, raw_entries = _parse_lines(lines, str(path))
     if not parsed:
         console.print("[yellow]SSH ile ilgili log satırı bulunamadı.[/yellow]")
         return
