@@ -57,9 +57,12 @@ class SecurityEvent(BaseModel):
     detected_at: datetime = Field(default_factory=datetime.now)
     source_ip: str | None = Field(default=None, description="Saldırgan IP adresi")
     target_service: str = Field(default="ssh", description="Hedef servis")
-    failed_attempts: int = Field(default=0, description="Başarısız giriş sayısı")
-    successful_attempts: int = Field(default=0, description="Başarılı giriş sayısı")
-    attempted_usernames: list[str] = Field(default_factory=list, description="Denenen kullanıcı adları")
+    failed_attempts: int = Field(default=0, description="Başarısız/engellenen deneme sayısı")
+    successful_attempts: int = Field(default=0, description="Başarılı (etkili olmuş) deneme sayısı")
+    indicators: list[str] = Field(
+        default_factory=list,
+        description="Senaryoya göre değişen gösterge listesi (SSH: denenen kullanıcı adları, web: eşleşen saldırı imzaları)",
+    )
     time_window_seconds: int = Field(default=60, description="Gözlem zaman penceresi")
     raw_log_entries: list[LogEntry] = Field(default_factory=list, description="Kaynak ham loglar")
     summary: str = Field(default="", description="İnsan okunabilir kısa özet")

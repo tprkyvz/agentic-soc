@@ -20,7 +20,7 @@ from rich.text import Text
 from .models import AgentState, LogEntry, LogSource, SecurityEvent, ThreatLevel
 from .graph import soc_graph
 from ..utils.config import settings
-from ..utils.parsers import parse_ssh_line, ParsedSSHEvent
+from ..utils.parsers import parse_ssh_line, ParsedSSHEvent, parse_web_line, ParsedWebEvent
 
 console = Console()
 
@@ -29,7 +29,7 @@ console = Console()
 # Olay oluşturma: Birden fazla ham log → tek SecurityEvent
 # ---------------------------------------------------------------------------
 
-def _group_events_from_parsed(
+def _group_ssh_events_from_parsed(
     parsed_events: list[ParsedSSHEvent],
     raw_entries: list[LogEntry],
     source: str,
@@ -76,7 +76,63 @@ def _group_events_from_parsed(
                 target_service="ssh",
                 failed_attempts=failed,
                 successful_attempts=success,
-                attempted_usernames=usernames,
+                indicators=usernames,
+                time_window_seconds=settings.triage_time_window_seconds,
+                raw_log_entries=ip_raw,
+                summary=summary,
+            )
+        )
+
+    return security_events
+
+
+def _group_web_events_from_parsed(
+    parsed_events: list[ParsedWebEvent],
+    raw_entries: list[LogEntry],
+    source: str,
+) -> list[SecurityEvent]:
+    """
+    Parse edilmiş web (SQLi/XSS) olaylarını IP bazında grupla ve SecurityEvent listesi döndür.
+
+    SSH grubu ile aynı prensip: failed/success ayrık kategoriler (toplamı
+    tüm kötü niyetli isteklere eşit). "success" burada SSH'teki gibi masum
+    değil – bir SQLi/XSS payload'ının HTTP 200 ile (yani engellenmeden)
+    sonuçlanması demektir. Hiç kötü niyetli imza taşımayan (tamamen temiz
+    trafik üreten) IP'ler için hiçbir SecurityEvent oluşturulmaz.
+    """
+    by_ip: dict[str, list[ParsedWebEvent]] = defaultdict(list)
+    raw_by_ip: dict[str, list[LogEntry]] = defaultdict(list)
+    for ev, raw in zip(parsed_events, raw_entries):
+        if ev.event_type == "benign":
+            continue
+        key = ev.ip_address or "unknown"
+        by_ip[key].append(ev)
+        raw_by_ip[key].append(raw)
+
+    security_events = []
+    for ip, events in by_ip.items():
+        failed = sum(1 for e in events if e.status_code != 200)
+        success = sum(1 for e in events if e.status_code == 200)
+        indicators = list(dict.fromkeys(
+            f"{e.event_type.replace('_attempt', '')}: {sig}"
+            for e in events for sig in e.matched_signatures
+        ))
+
+        ip_raw = raw_by_ip[ip]
+
+        summary = (
+            f"{failed} engellenen, {success} başarılı (200) kötü niyetli istek – "
+            f"IP: {ip} – göstergeler: {', '.join(indicators[:3])}"
+        )
+
+        security_events.append(
+            SecurityEvent(
+                event_id=str(uuid.uuid4()),
+                source_ip=ip if ip != "unknown" else None,
+                target_service="web",
+                failed_attempts=failed,
+                successful_attempts=success,
+                indicators=indicators,
                 time_window_seconds=settings.triage_time_window_seconds,
                 raw_log_entries=ip_raw,
                 summary=summary,
@@ -119,9 +175,10 @@ def _print_report(state_dict: dict) -> None:
     t.add_row("Tehdit Seviyesi", f"[bold {color}]{level_str}[/bold {color}]")
     t.add_row("Güven Skoru", f"%{int(triage.confidence * 100)}")
     t.add_row("IP Adresi", state.event.source_ip or "bilinmiyor")
-    t.add_row("Başarısız Deneme", str(state.event.failed_attempts))
-    t.add_row("Başarılı Giriş", str(state.event.successful_attempts))
-    t.add_row("Denenen Kullanıcılar", ", ".join(state.event.attempted_usernames[:5]) or "—")
+    t.add_row("Hedef Servis", state.event.target_service)
+    t.add_row("Başarısız/Engellenen", str(state.event.failed_attempts))
+    t.add_row("Başarılı", str(state.event.successful_attempts))
+    t.add_row("Göstergeler", ", ".join(state.event.indicators[:5]) or "—")
     t.add_row("Triage Gerekçesi", triage.reason)
     console.print(t)
 
@@ -165,8 +222,8 @@ def _print_report(state_dict: dict) -> None:
 # Log kaynakları
 # ---------------------------------------------------------------------------
 
-def _parse_lines(lines: list[str], source: str) -> tuple[list[ParsedSSHEvent], list[LogEntry]]:
-    """Ham log satırlarını parse et; parsed ve raw_entries indeks bazında eşleşir."""
+def _parse_ssh_lines(lines: list[str], source: str) -> tuple[list[ParsedSSHEvent], list[LogEntry]]:
+    """Ham SSH log satırlarını parse et; parsed ve raw_entries indeks bazında eşleşir."""
     parsed: list[ParsedSSHEvent] = []
     raw_entries: list[LogEntry] = []
     for line in lines:
@@ -177,16 +234,36 @@ def _parse_lines(lines: list[str], source: str) -> tuple[list[ParsedSSHEvent], l
     return parsed, raw_entries
 
 
-def analyze_log_text(text: str, source: str = "upload") -> list[dict]:
+def _parse_web_lines(lines: list[str], source: str) -> tuple[list[ParsedWebEvent], list[LogEntry]]:
+    """Ham web access log satırlarını parse et; parsed ve raw_entries indeks bazında eşleşir."""
+    parsed: list[ParsedWebEvent] = []
+    raw_entries: list[LogEntry] = []
+    for line in lines:
+        ev = parse_web_line(line)
+        if ev:
+            parsed.append(ev)
+            raw_entries.append(LogEntry(source=source, raw_log=line, log_source_type=LogSource.FILE))
+    return parsed, raw_entries
+
+
+def analyze_log_text(text: str, source: str = "upload", log_type: str = "ssh") -> list[dict]:
     """
     Ham log metnini parse edip graph'tan geçir, AgentState dict listesi döndür.
 
     Konsola basmaz – CLI dışı çağıranlar (örn. dashboard API) için kullanılır.
     """
-    parsed, raw_entries = _parse_lines(text.splitlines(), source)
-    if not parsed:
-        return []
-    security_events = _group_events_from_parsed(parsed, raw_entries, source)
+    lines = text.splitlines()
+    if log_type == "web":
+        parsed, raw_entries = _parse_web_lines(lines, source)
+        if not parsed:
+            return []
+        security_events = _group_web_events_from_parsed(parsed, raw_entries, source)
+    else:
+        parsed, raw_entries = _parse_ssh_lines(lines, source)
+        if not parsed:
+            return []
+        security_events = _group_ssh_events_from_parsed(parsed, raw_entries, source)
+
     return [soc_graph.invoke(AgentState(event=event).model_dump()) for event in security_events]
 
 
@@ -199,32 +276,39 @@ def _run_on_events(security_events: list[SecurityEvent]) -> None:
         _print_report(result)
 
 
-def run_file_mode(log_file: str) -> None:
+def run_file_mode(log_file: str, log_type: str = "ssh") -> None:
     """Statik log dosyasını okuyup analiz et."""
     path = Path(log_file)
     if not path.exists():
         console.print(f"[red]Hata: Dosya bulunamadı: {log_file}[/red]")
         return
 
-    console.print(f"[cyan]📂 Dosya modu: {path}[/cyan]")
+    console.print(f"[cyan]📂 Dosya modu ({log_type}): {path}[/cyan]")
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     console.print(f"[dim]{len(lines)} satır okundu.[/dim]")
 
-    parsed, raw_entries = _parse_lines(lines, str(path))
+    if log_type == "web":
+        parsed, raw_entries = _parse_web_lines(lines, str(path))
+        group_fn = _group_web_events_from_parsed
+    else:
+        parsed, raw_entries = _parse_ssh_lines(lines, str(path))
+        group_fn = _group_ssh_events_from_parsed
+
     if not parsed:
-        console.print("[yellow]SSH ile ilgili log satırı bulunamadı.[/yellow]")
+        console.print("[yellow]İlgili log satırı bulunamadı.[/yellow]")
         return
 
-    console.print(f"[dim]{len(parsed)} SSH olayı parse edildi.[/dim]")
-    security_events = _group_events_from_parsed(parsed, raw_entries, str(path))
+    console.print(f"[dim]{len(parsed)} olay parse edildi.[/dim]")
+    security_events = group_fn(parsed, raw_entries, str(path))
     _run_on_events(security_events)
 
 
-def run_docker_mode(container_name: str | None = None) -> None:
+def run_docker_mode(container_name: str | None = None, log_type: str = "ssh") -> None:
     """Docker container'dan canlı log stream oku."""
     import docker as docker_sdk
 
-    container_name = container_name or settings.ssh_container_name
+    is_web = log_type == "web"
+    container_name = container_name or (settings.web_container_name if is_web else settings.ssh_container_name)
     keywords = settings.ssh_keywords
 
     try:
@@ -235,39 +319,44 @@ def run_docker_mode(container_name: str | None = None) -> None:
         console.print("[yellow]Docker çalışıyor mu? Container başlatıldı mı?[/yellow]")
         return
 
-    console.print(f"[cyan]🐳 Docker modu: {container_name} dinleniyor...[/cyan]")
+    console.print(f"[cyan]🐳 Docker modu ({log_type}): {container_name} dinleniyor...[/cyan]")
     console.print("[dim]Durdurmak için Ctrl+C[/dim]\n")
 
     # Pencere bazlı gruplama için buffer
-    window_buffer: list[ParsedSSHEvent] = []
+    window_buffer: list[ParsedSSHEvent] | list[ParsedWebEvent] = []
     raw_buffer: list[LogEntry] = []
     window_start = datetime.now()
     window_seconds = settings.triage_time_window_seconds
+    group_fn = _group_web_events_from_parsed if is_web else _group_ssh_events_from_parsed
+
+    def _flush() -> None:
+        security_events = group_fn(window_buffer, raw_buffer, container_name)
+        _run_on_events(security_events)
+        window_buffer.clear()
+        raw_buffer.clear()
 
     try:
         for line_bytes in container.logs(stream=True, follow=True, tail=0):
             line = line_bytes.decode("utf-8", errors="ignore").strip()
             if not line:
                 continue
-            if not any(kw in line.lower() for kw in keywords):
+            # Web access log'unda her satır gerçek bir istektir; SSH'in aksine
+            # gürültü filtrelemeye gerek yok – parse_web_line'ın kendi
+            # sınıflandırması (sqli/xss/benign) zaten filtre görevi görüyor.
+            if not is_web and not any(kw in line.lower() for kw in keywords):
                 continue
 
-            ev = parse_ssh_line(line)
+            ev = parse_web_line(line) if is_web else parse_ssh_line(line)
             if ev:
                 window_buffer.append(ev)
                 raw_buffer.append(LogEntry(source=container_name, raw_log=line))
 
             # Zaman penceresi dolduğunda işle
             if (datetime.now() - window_start).seconds >= window_seconds and window_buffer:
-                security_events = _group_events_from_parsed(window_buffer, raw_buffer, container_name)
-                _run_on_events(security_events)
-                window_buffer.clear()
-                raw_buffer.clear()
+                _flush()
                 window_start = datetime.now()
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Durduruldu.[/yellow]")
-        # Kalan buffer'ı işle
         if window_buffer:
-            security_events = _group_events_from_parsed(window_buffer, raw_buffer, container_name)
-            _run_on_events(security_events)
+            _flush()

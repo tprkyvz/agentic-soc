@@ -22,14 +22,17 @@ class Settings(BaseSettings):
 
     # Lab / Docker
     ssh_container_name: str = Field(
-        default="victim_ssh_server", description="Dinlenecek Docker container adı"
+        default="victim_ssh_server", description="Dinlenecek Docker container adı (SSH senaryosu)"
     )
     ssh_log_filter_keywords: str = Field(
         default="sshd,failed,invalid,authentication",
         description="Log filtresi için anahtar kelimeler (virgülle ayrılmış)",
     )
+    web_container_name: str = Field(
+        default="victim_web_server", description="Dinlenecek Docker container adı (web senaryosu)"
+    )
 
-    # Triage eşikleri
+    # Triage eşikleri – SSH
     triage_suspicious_threshold: int = Field(
         default=5, description="Şüpheli kabul için minimum başarısız giriş sayısı"
     )
@@ -38,6 +41,16 @@ class Settings(BaseSettings):
     )
     triage_time_window_seconds: int = Field(
         default=60, description="Olay gruplama zaman penceresi (saniye)"
+    )
+
+    # Triage eşikleri – Web (SQLi/XSS)
+    # Tek bir gerçek SQLi/XSS payload'ı, birkaç yanlış yazılmış SSH şifresinden
+    # çok daha kasıtlı bir sinyaldir; bu yüzden eşikler SSH'e göre çok daha düşük.
+    triage_web_suspicious_threshold: int = Field(
+        default=1, description="Şüpheli kabul için minimum SQLi/XSS imza sayısı"
+    )
+    triage_web_malicious_threshold: int = Field(
+        default=3, description="Kesin saldırı kabul için minimum SQLi/XSS imza sayısı"
     )
 
     @property

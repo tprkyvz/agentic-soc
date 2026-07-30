@@ -1,5 +1,4 @@
-## Agentic SOC – Multi-Agent LLM-Driven Security Operations Center
-
+# Agentic SOC – Multi-Agent LLM-Driven Security Operations Center
 
 > Agentic SOC: a multi-agent system that sends complex logs to an LLM and answers:
 > *Is this an attack? Which vulnerability does it target? How can I mitigate it?*
@@ -35,6 +34,7 @@ agentic-soc/
     engine/            # Pydantic models, LangGraph graph, pipeline, CLI entry (main.py)
     knowledge_base/     # RAG: ChromaDB storage, embeddings, retriever, seeder
     utils/             # Config, Ollama LLM client, log parsers
+    webapp/            # FastAPI local dashboard (run + inspect the KB in a browser)
 
   lab/                  # Experimental lab (attack generation)
     victims/           # Vulnerable services / apps in Docker
@@ -84,6 +84,19 @@ docker compose -f lab/victims/ssh-bruteforce/docker-compose.yml up -d
 python -m src.agentic_soc.main --source docker   # in one terminal
 bash lab/victims/ssh-bruteforce/attack.sh          # in another terminal
 ```
+
+### Local Dashboard
+
+A FastAPI dashboard runs the same pipeline from a browser instead of the CLI —
+pick a sample log or paste raw log lines, run the analysis, and inspect the
+knowledge base's cases and stats. Analysis history is kept in memory only
+(cleared on restart).
+
+```bash
+python -m src.agentic_soc.webapp
+```
+
+Then open <http://127.0.0.1:8000>.
 
 ---
 
